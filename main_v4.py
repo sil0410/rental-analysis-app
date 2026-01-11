@@ -196,13 +196,28 @@ def auto_import_csv_files():
     """自動導入 upload 資料夾中的所有 CSV 檔案（合併導入模式）"""
     import pandas as pd
     
-    upload_dir = os.path.join(os.path.dirname(__file__), "upload")
+    # 使用多個可能的路徑
+    possible_paths = [
+        os.path.join(os.path.dirname(__file__), "upload"),
+        "/app/upload",
+        "./upload",
+        os.path.join(os.getcwd(), "upload")
+    ]
     
-    # 如果 upload 資料夾不存在，創建它
-    if not os.path.exists(upload_dir):
-        os.makedirs(upload_dir)
-        print(f"✅ 已創建 upload 資料夾: {upload_dir}")
-        return
+    upload_dir = None
+    for path in possible_paths:
+        if os.path.exists(path):
+            upload_dir = path
+            print(f"✅ 找到 upload 資料夾: {upload_dir}")
+            break
+    
+    # 如果都不存在，嘗試創建
+    if upload_dir is None:
+        upload_dir = possible_paths[0]
+        if not os.path.exists(upload_dir):
+            os.makedirs(upload_dir)
+            print(f"✅ 已創建 upload 資料夾: {upload_dir}")
+            return
     
     # 掃描所有 CSV 檔案
     csv_files = [f for f in os.listdir(upload_dir) if f.endswith('.csv') and not f.endswith('_converted.csv')]
@@ -212,6 +227,7 @@ def auto_import_csv_files():
         return
     
     print(f"📁 找到 {len(csv_files)} 個 CSV 檔案，開始合併導入...")
+    print(f"📂 upload 資料夾路徑: {upload_dir}")
     
     # 第一步：合併所有 CSV 檔案
     all_data = []
