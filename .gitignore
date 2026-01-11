@@ -1,7 +1,9 @@
 # 數據檔案
 *.db
-upload/
-*.csv
+# upload/ 文件夾需要被上傳到 Railway
+# *.csv 文件需要被上傳到 Railway
+# 只排除轉換後的文件
+*_converted.csv
 
 # Python
 __pycache__/
