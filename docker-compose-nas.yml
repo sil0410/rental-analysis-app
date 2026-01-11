@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  rental-app:
+    image: python:3.11-slim
+    container_name: rental_analysis_app
+    working_dir: /app
+    
+    # 掛載卷 - 將 NAS 上的文件夾映射到容器內
+    volumes:
+      # 應用代碼
+      - /volume1/docker/rental_app:/app
+      # 數據庫（持久化存儲）
+      - /volume1/docker/rental_data:/app/data
+      # CSV 上傳文件夾
+      - /volume1/docker/rental_uploads:/app/upload
+    
+    # 端口映射
+    ports:
+      - "8000:8000"
+    
+    # 環境變量
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DB_PATH=/app/data/rental.db
+    
+    # 啟動命令
+    command: >
+      sh -c "
+      pip install -q -r requirements.txt &&
+      python -m uvicorn main_v4:app --host 0.0.0.0 --port 8000 --reload
+      "
+    
+    # 重啟策略
+    restart: unless-stopped
+    
+    # 網絡設置
+    networks:
+      - rental_network
+
+networks:
+  rental_network:
+    driver: bridge

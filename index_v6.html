@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>租屋行情分析 - Google Maps 版 v6.0</title>
+    
+    <!-- Google Maps API -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC2wnsfWaDK9BA5wEkf04rFAon2yQgttlk&libraries=places,geometry,visualization"></script>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Microsoft JhengHei', sans-serif;
+            background: #f5f5f5;
+        }
+        
+        /* 頂部導航欄 */
+        .navbar {
+            background: linear-gradient(135deg, #2e7d32, #43a047);
+            color: white;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        
+        .navbar h1 {
+            font-size: 20px;
+            font-weight: 600;
+        }
+        
+        .navbar-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .navbar-status {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+        
+        /* 進階模式開關 */
+        .advanced-toggle {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+        }
+        
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 24px;
+            background: rgba(255,255,255,0.3);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        .toggle-switch.active {
+            background: #4caf50;
+        }
+        
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: left 0.3s;
+        }
+        
+        .toggle-switch.active::after {
+            left: 28px;
+        }
+        
+        /* 搜索欄 */
+        .search-bar {
+            background: white;
+            padding: 15px 20px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+            border-bottom: 1px solid #e0e0e0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .search-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .search-group label {
+            font-weight: 600;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+        
+        .search-group input,
+        .search-group select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        
+        .search-group input:focus,
+        .search-group select:focus {
+            outline: none;
+            border-color: #2e7d32;
+            box-shadow: 0 0 0 2px rgba(46, 125, 50, 0.1);
+        }
+        
+        .btn-search {
+            background: #2e7d32;
+            color: white;
+            padding: 8px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+        
+        .btn-search:hover {
+            background: #1b5e20;
+        }
+        
+        /* 熱力圖模式按鈕 */
+        .btn-heatmap {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            transition: all 0.3s;
+        }
+        
+        .btn-heatmap:hover {
+            border-color: #2e7d32;
+            background: #f0f0f0;
+        }
+        
+        .btn-heatmap.active {
+            background: #2e7d32;
+            color: white;
+            border-color: #2e7d32;
+        }
+        
+        /* 控制欄 */
+        .control-bar {
+            background: white;
+            padding: 12px 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .btn-control {
+            background: #f0f0f0;
+            border: 1px solid #ddd;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+        
+        .btn-control:hover {
+            background: #e0e0e0;
+        }
+        
+        /* 主容器 */
+        .main-container {
+            display: flex;
+            height: calc(100vh - 140px);
+            gap: 0;
+        }
+        
+        /* 地圖容器 */
+        #map {
+            flex: 1;
+            background: #e0e0e0;
+            position: relative;
+        }
+        
+/* 右侧面板 */
+        .right-panel {
+            width: 350px;
+            background: white;
+            border-left: 1px solid #e0e0e0;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        
+        .panel-section {
+            margin-bottom: 25px;
+            border: 1px dashed #ddd;
+            padding: 15px;
+            border-radius: 4px;
+        }
+        
+        .panel-section h3 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .panel-section h3::before {
+            content: '📊';
+            font-size: 16px;
+        }
+        
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            font-size: 13px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .stat-row:last-child {
+            border-bottom: none;
+        }
+        
+        .stat-label {
+            color: #666;
+        }
+        
+        .stat-value {
+            font-weight: 600;
+            color: #2e7d32;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 200px;
+            margin-top: 10px;
+        }
+        
+        /* 房源詳情彈窗 */
+        .property-popup {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            z-index: 1000;
+            max-width: 400px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        
+        .property-popup.active {
+            display: block;
+        }
+        
+        .popup-header {
+            background: #2e7d32;
+            color: white;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-radius: 8px 8px 0 0;
+        }
+        
+        .popup-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        
+        .popup-content {
+            padding: 20px;
+        }
+        
+        .popup-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 14px;
+        }
+        
+        .popup-row:last-child {
+            border-bottom: none;
+        }
+        
+        .popup-label {
+            color: #666;
+            font-weight: 600;
+        }
+        
+        .popup-value {
+            color: #333;
+            text-align: right;
+        }
+        
+        .popup-value.highlight {
+            color: #2e7d32;
+            font-weight: 600;
+        }
+        
+        /* 響應式設計 */
+        @media (max-width: 1024px) {
+            .right-panel {
+                width: 300px;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .main-container {
+                flex-direction: column;
+            }
+            
+            .right-panel {
+                width: 100%;
+                height: 300px;
+                border-left: none;
+                border-top: 1px solid #e0e0e0;
+            }
+            
+            #map {
+                height: calc(100vh - 440px);
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 頂部導航欄 -->
+    <div class="navbar">
+        <h1>🏠 租屋行情分析 - Google Maps 版 v6.0</h1>
+        <div class="navbar-right">
+            <div class="navbar-status" id="statusText">載入中...</div>
+            <div class="advanced-toggle">
+                <span>進階模式</span>
+                <div class="toggle-switch" id="advancedToggle" onclick="toggleAdvancedMode()"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 搜索欄 -->
+    <div class="search-bar">
+        <div class="search-group">
+            <label for="address">📍 地址</label>
+            <input type="text" id="address" placeholder="例如：中和區永和路76號" value="中和區永和路76號">
+        </div>
+        
+        <div class="search-group">
+            <label for="buildingType">建築類型</label>
+            <select id="buildingType">
+                <option value="">全部</option>
+                <option value="apartment">公寓</option>
+                <option value="building">電梯大樓</option>
+            </select>
+        </div>
+        
+        <div class="search-group">
+            <label for="roomType">房型</label>
+            <select id="roomType">
+                <option value="">全部</option>
+                <option value="1房">套房</option>
+                <option value="2房">2房</option>
+                <option value="3房">3房</option>
+                <option value="4房">3房以上</option>
+            </select>
+        </div>
+        
+        <div class="search-group">
+            <label for="distanceMin">📏 距離</label>
+            <input type="number" id="distanceMin" value="0" min="0"> -
+            <input type="number" id="distanceMax" value="5000" min="0"> 米
+        </div>
+        
+        <button class="btn-search" id="searchBtn" onclick="performSearch()">搜尋分析</button>
+        
+        <!-- 熱力圖模式切換 -->
+        <div class="search-group" style="margin-top: 15px; border-top: 1px solid #ddd; padding-top: 15px;">
+            <label>🔥 熱力圖模式</label>
+            <div style="display: flex; gap: 8px;">
+                <button class="btn-heatmap active" id="heatmapRent" onclick="setHeatmapMode('rent')">租金高低</button>
+                <button class="btn-heatmap" id="heatmapDensity" onclick="setHeatmapMode('density')">房源密度</button>
+            </div>
+            <div id="advancedHeatmapControls" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee;">
+                <label style="font-size: 12px; color: #666;">📈 熱力圖影響範圍</label>
+                <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
+                    <input type="range" id="heatmapRadius" min="10" max="100" value="30" step="5" style="flex: 1;">
+                    <span id="radiusValue" style="font-size: 12px; color: #666; min-width: 35px;">30m</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 控制欄 -->
+    <div class="control-bar">
+        <select id="versionSelect" onchange="onVersionChange()" class="btn-control">
+            <option value="">載入中...</option>
+        </select>
+        <button class="btn-control" id="playBtn" onclick="toggleAnimation()">▶️ 播放</button>
+        <button class="btn-control" id="prevBtn" onclick="previousVersion()">⬅️ 上一週</button>
+        <button class="btn-control" id="nextBtn" onclick="nextVersion()">下一週 ➡️</button>
+    </div>
+    
+    <!-- 主容器 -->
+    <div class="main-container">
+        <!-- 地圖 -->
+        <div id="map"></div>
+        
+        <!-- 熱力圖圖例 -->
+        <div id="heatmapLegend" class="heatmap-legend" style="display: none;">
+            <div class="legend-title">count</div>
+            <div class="legend-items">
+                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">96-98</span></div>
+                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">91-95</span></div>
+                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">86-90</span></div>
+                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">81-85</span></div>
+                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">76-80</span></div>
+                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">71-75</span></div>
+                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">66-70</span></div>
+                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">61-65</span></div>
+                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">56-60</span></div>
+                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">51-55</span></div>
+                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">46-50</span></div>
+                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">41-45</span></div>
+                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">36-40</span></div>
+                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">31-35</span></div>
+                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">26-30</span></div>
+                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">21-25</span></div>
+                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">16-20</span></div>
+                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">11-15</span></div>
+                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">6-10</span></div>
+                <div class="legend-item"><span class="legend-color" style="background-color: #0000ff;"></span><span class="legend-label">1-5</span></div>
+            </div>
+        </div>
+        
+        <!-- 右側面板 -->
+        <div class="right-panel">
+            <div class="panel-section">
+                <h3>區域統計</h3>
+                <div class="stat-row">
+                    <span class="stat-label">週次</span>
+                    <span class="stat-value" id="weekId">-</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">房源數</span>
+                    <span class="stat-value" id="totalCount">-</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">新增房源</span>
+                    <span class="stat-value" id="newCount">-</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">已下架</span>
+                    <span class="stat-value" id="deletedCount">-</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">平均租金</span>
+                    <span class="stat-value" id="avgRent">-</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">平均坪數</span>
+                    <span class="stat-value" id="avgArea">-</span>
+                </div>
+            </div>
+            
+            <div class="panel-section">
+                <h3>房型分佈</h3>
+                <div class="chart-container">
+                    <canvas id="roomTypeChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="panel-section">
+                <h3>租金分析</h3>
+                <div class="chart-container">
+                    <canvas id="rentAnalysisChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 房源詳情彈窗 -->
+    <div class="property-popup" id="propertyPopup">
+        <div class="popup-header">
+            <span id="popupTitle">房源詳情</span>
+            <button class="popup-close" onclick="closePropertyPopup()">×</button>
+        </div>
+        <div class="popup-content" id="popupContent">
+            <!-- 動態生成 -->
+        </div>
+    </div>
+    
+    <script>
+        // 配置
+        const API_BASE = '/api';
+        let map;
+        let markers = [];
+        let queryLocationMarker = null;
+        let searchRadiusCircle = null; // 搜尋範圍圓圈
+        let currentVersionIndex = -1;
+        let versions = [];
+        let currentData = null;
+        let advancedMode = false;
+        let animationRunning = false;
+        let roomTypeChart = null;
+        let rentAnalysisChart = null;
+        let heatmapLayer = null;
+        let heatmapMode = 'rent'; // 'rent' 或 'density'
+        let heatmapRadius = 30; // 熱力圖影響範圍 (米)
+        
+        // 初始化
+        window.addEventListener('load', () => {
+            initMap();
+            loadVersions();
+        });
+        
+        // 初始化地圖
+        function initMap() {
+            const center = { lat: 25.0088, lng: 121.4988 };
+            map = new google.maps.Map(document.getElementById('map'), {
+                zoom: 14,
+                center: center,
+                mapTypeId: 'roadmap',
+                gestureHandling: 'greedy',
+                styles: [
+                    {
+                        featureType: 'poi',
+                        elementType: 'labels',
+                        stylers: [{ visibility: 'off' }]
+                    }
+                ]
+            });
+            
+            // 添加點擊監聽
+            map.addListener('click', () => {
+                closePropertyPopup();
+            });
+        }
+        
+        // 加載版本列表
+        async function loadVersions() {
+            try {
+                const response = await fetch(`${API_BASE}/versions`);
+                const data = await response.json();
+                
+                if (data.status === 'error') {
+                    throw new Error(data.message);
+                }
+                
+                versions = data.versions || [];
+                updateVersionSelector();
+                
+                if (versions.length > 0) {
+                    currentVersionIndex = versions.length - 1;
+                    onVersionChange();
+                }
+                
+            } catch (error) {
+                console.error('加載版本失敗:', error);
+                document.getElementById('versionSelect').innerHTML = '<option value="">加載失敗</option>';
+            }
+        }
+        
+        // 更新版本選擇器
+        function updateVersionSelector() {
+            const select = document.getElementById('versionSelect');
+            select.innerHTML = '';
+            
+            versions.forEach((version, index) => {
+                const option = document.createElement('option');
+                option.value = index;
+                option.textContent = `${version.week_id} (${version.upload_date})`;
+                select.appendChild(option);
+            });
+            
+            if (currentVersionIndex >= 0) {
+                select.value = currentVersionIndex;
+            }
+        }
+        
+        // 版本變更
+        function onVersionChange() {
+            const select = document.getElementById('versionSelect');
+            currentVersionIndex = parseInt(select.value);
+            // 使用默認地址執行搜尋
+            performSearchWithDefaultAddress();
+        }
+        
+        // 使用默認地址執行搜尋
+        async function performSearchWithDefaultAddress() {
+            // 設置默認地址為中和區永和路（中心位置）
+            const address = document.getElementById('address').value || '新北市中和區永和路';
+            document.getElementById('address').value = address;
+            await performSearch();
+        }
+        
+        // 執行搜尋
+        async function performSearch() {
+            const address = document.getElementById('address').value;
+            const distanceMin = parseInt(document.getElementById('distanceMin').value) || 0;
+            const distanceMax = parseInt(document.getElementById('distanceMax').value) || 5000;
+            const buildingType = document.getElementById('buildingType').value;
+            const roomType = document.getElementById('roomType').value;
+            
+            if (!address) {
+                alert('請輸入地址');
+                return;
+            }
+            
+            try {
+                // 使用 Google Geocoding API 定位地址
+                const geocoder = new google.maps.Geocoder();
+                geocoder.geocode({ address: address }, async (results, status) => {
+                    if (status !== 'OK') {
+                        alert('無法定位地址，請檢查輸入');
+                        return;
+                    }
+                    
+                    const location = results[0].geometry.location;
+                    const lat = location.lat();
+                    const lng = location.lng();
+                    
+                    // 移動地圖到搜尋位置
+                    map.setCenter({ lat, lng });
+                    map.setZoom(14);
+                    
+                    // 清除舊的查詢位置圖釘和圓圈
+                    if (queryLocationMarker) {
+                        queryLocationMarker.setMap(null);
+                        queryLocationMarker = null;
+                    }
+                    if (searchRadiusCircle) {
+                        if (searchRadiusCircle.remove) {
+                            searchRadiusCircle.remove();
+                        } else if (searchRadiusCircle.setMap) {
+                            searchRadiusCircle.setMap(null);
+                        }
+                        searchRadiusCircle = null;
+                    }
+                    
+                    // 清除房源標記和熱力圖
+                    clearMarkers();
+                    
+                    // 添加新的紅色圖釘標記查詢位置 - 放大 2 倍
+                    queryLocationMarker = new google.maps.Marker({
+                        position: { lat, lng },
+                        map: map,
+                        title: '查詢位置',
+                        icon: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png',
+                        scale: 2
+                    });
+                    
+                    // 添加虛線圓圈表示搜尋範圍（使用 SVG 覆蓋層）
+                    function createSearchRadiusCircle(centerLat, centerLng, radiusMeters) {
+                        // 移除舊的 SVG
+                        const oldSvg = document.getElementById('searchRadiusSvg');
+                        if (oldSvg) oldSvg.remove();
+                        
+                        // 創建 SVG 元素
+                        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                        svg.id = 'searchRadiusSvg';
+                        svg.style.position = 'absolute';
+                        svg.style.top = '0';
+                        svg.style.left = '0';
+                        svg.style.width = '100%';
+                        svg.style.height = '100%';
+                        svg.style.pointerEvents = 'none';
+                        svg.style.zIndex = '1000';
+                        
+                        // 創建圓圈元素
+                        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                        circle.id = 'searchRadiusCircleElement';
+                        circle.setAttribute('fill', 'none');
+                        circle.setAttribute('stroke', '#FF0000');
+                        circle.setAttribute('stroke-width', '3');
+                        circle.setAttribute('stroke-dasharray', '10,5');
+                        circle.setAttribute('stroke-opacity', '0.8');
+                        
+                        svg.appendChild(circle);
+                        
+                        // 添加到地圖容器
+                        const mapDiv = document.getElementById('map');
+                        mapDiv.style.position = 'relative';
+                        mapDiv.appendChild(svg);
+                        
+                        // 更新圓圈位置的函數
+                        function updateCirclePosition() {
+                            const bounds = map.getBounds();
+                            if (!bounds) return;
+                            
+                            const mapRect = mapDiv.getBoundingClientRect();
+                            const ne = bounds.getNorthEast();
+                            const sw = bounds.getSouthWest();
+                            
+                            // 計算經緯度到像素的轉換比例
+                            const latRange = ne.lat() - sw.lat();
+                            const lngRange = ne.lng() - sw.lng();
+                            
+                            // 計算圓心的像素位置
+                            const cx = ((centerLng - sw.lng()) / lngRange) * mapRect.width;
+                            const cy = ((ne.lat() - centerLat) / latRange) * mapRect.height;
+                            
+                            // 計算半徑的像素距離（使用緯度方向）
+                            const radiusInDegrees = radiusMeters / 111000;
+                            const radiusInPixels = (radiusInDegrees / latRange) * mapRect.height;
+                            
+                            // 更新圓圈屬性
+                            circle.setAttribute('cx', cx);
+                            circle.setAttribute('cy', cy);
+                            circle.setAttribute('r', radiusInPixels);
+                        }
+                        
+                        // 初始更新
+                        updateCirclePosition();
+                        
+                        // 監聽地圖變化
+                        google.maps.event.addListener(map, 'bounds_changed', updateCirclePosition);
+                        google.maps.event.addListener(map, 'zoom_changed', updateCirclePosition);
+                        google.maps.event.addListener(map, 'center_changed', updateCirclePosition);
+                        
+                        return {
+                            svg: svg,
+                            circle: circle,
+                            update: updateCirclePosition,
+                            remove: function() {
+                                svg.remove();
+                            }
+                        };
+                    }
+                    
+                    searchRadiusCircle = createSearchRadiusCircle(lat, lng, distanceMax);
+                    
+                    // 查詢 API（傳遞座標以確保前後端一致）
+                    const params = new URLSearchParams({
+                        address: address,
+                        distance_min: distanceMin,
+                        distance_max: distanceMax,
+                        building_type: buildingType,
+                        room_type: roomType,
+                        lat: lat,
+                        lng: lng
+                    });
+                    
+                    const response = await fetch(`${API_BASE}/analysis_v4?${params}`);
+                    const data = await response.json();
+                    
+                    if (data.status === 'error') {
+                        alert('查詢失敗: ' + data.message);
+                        return;
+                    }
+                    
+                    currentData = data;
+                    displayResults(data);
+                    
+                });
+            } catch (error) {
+                console.error('搜尋失敗:', error);
+                alert('搜尋失敗');
+            }
+        }
+        
+        // 顯示結果
+        function displayResults(data) {
+            clearMarkers();
+            
+            // 更新統計信息
+            const summary = data.summary;
+            document.getElementById('weekId').textContent = data.query.week_id || '-';
+            document.getElementById('totalCount').textContent = summary.total_properties;
+            document.getElementById('newCount').textContent = summary.new_properties;
+            document.getElementById('deletedCount').textContent = summary.deleted_properties;
+            document.getElementById('avgRent').textContent = `$${Math.round(summary.avg_rent_all).toLocaleString()}`;
+            document.getElementById('avgArea').textContent = `${summary.avg_area.toFixed(1)} 坪`;
+            
+            // 添加標記
+            const heatmapData = [];
+            data.properties.forEach(prop => {
+                const marker = new google.maps.Marker({
+                    position: { lat: prop.latitude, lng: prop.longitude },
+                    map: map,
+                    title: prop.title,
+                    icon: getMarkerIcon(prop)
+                });
+                
+                marker.addListener('click', () => {
+                    showPropertyPopup(prop);
+                });
+                
+                markers.push(marker);
+                heatmapData.push(new google.maps.LatLng(prop.latitude, prop.longitude));
+            });
+            
+            // 添加熱力圖
+            if (heatmapData.length > 0) {
+                updateHeatmap(data);
+
+            }
+            
+            // 更新圖表
+            updateCharts(data);
+        }
+        
+        // 獲取標記圖標 - 根據房源狀態變色
+        function getMarkerIcon(prop) {
+            let color;
+            
+            // 根據房源狀態決定顏色
+            if (prop.status === 'deleted') {
+                // 本週下架：灰色
+                color = '#999999';
+            } else if (prop.status === 'active') {
+                // 根據上榜時間決定紅色深度
+                // currentVersionIndex 是當前選中的版本索引
+                // uploadWeek 是房源上榜的週次
+                const currentWeek = parseInt(versions[currentVersionIndex]?.week_id) || 2602;
+                const uploadWeek = parseInt(prop.upload_week) || currentWeek;
+                const weeksDiff = currentWeek - uploadWeek;
+                
+                if (weeksDiff <= 0) {
+                    // 本週新增：亮紅色
+                    color = '#FF0000';
+                } else if (weeksDiff >= 49) {
+                    // 經過 49 週以上：紅黑色（最深）
+                    color = '#1a0000';
+                } else {
+                    // 中間漸變：從紅色到紅黑色
+                    // 50 級漸變
+                    const colors = [
+                        '#FF0000', '#FF0A0A', '#FF1414', '#FF1E1E', '#FF2828',
+                        '#FF3232', '#FF3C3C', '#FF4646', '#FF5050', '#FF5A5A',
+                        '#FF6464', '#FF6E6E', '#FF7878', '#FF8282', '#FF8C8C',
+                        '#FF9696', '#FFA0A0', '#FFAAAA', '#FFB4B4', '#FFBEBE',
+                        '#FFC8C8', '#FFD2D2', '#FFDBDB', '#FFE5E5', '#FFEFEF',
+                        '#F5E5E5', '#EBCBCB', '#E1B1B1', '#D79797', '#CD7D7D',
+                        '#C36363', '#B94949', '#AF2F2F', '#A51515', '#9B0B0B',
+                        '#910101', '#870000', '#7D0000', '#730000', '#690000',
+                        '#5F0000', '#550000', '#4B0000', '#410000', '#370000',
+                        '#2D0000', '#230000', '#190000', '#0F0000', '#1a0000'
+                    ];
+                    color = colors[Math.min(weeksDiff, 49)];
+                }
+            } else {
+                // 其他狀態：紅色
+                color = '#FF0000';
+            }
+            
+            // 創建 SVG 圓點標記
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12">
+                <circle cx="6" cy="6" r="5" fill="${color}" stroke="white" stroke-width="1"/>
+            </svg>`;
+            
+            return {
+                url: 'data:image/svg+xml;base64,' + btoa(svg),
+                scaledSize: new google.maps.Size(12, 12),
+                anchor: new google.maps.Point(6, 6)
+            };
+        }
+        
+        // 清除標記 - 不清除查詢位置標記
+        function clearMarkers() {
+            markers.forEach(marker => marker.setMap(null));
+            markers = [];
+            // 不清除 queryLocationMarker，保持紅色圖釘不消失
+            if (heatmapLayer) {
+                heatmapLayer.setMap(null);
+                heatmapLayer = null;
+            }
+        }
+        
+        // 清除所有標記包括查詢位置
+        function clearAllMarkers() {
+            markers.forEach(marker => marker.setMap(null));
+            markers = [];
+            if (queryLocationMarker) {
+                queryLocationMarker.setMap(null);
+                queryLocationMarker = null;
+            }
+            if (searchRadiusCircle) {
+                searchRadiusCircle.setMap(null);
+                searchRadiusCircle = null;
+            }
+            if (heatmapLayer) {
+                heatmapLayer.setMap(null);
+                heatmapLayer = null;
+            }
+        }
+        
+        // 顯示房源詳情
+        function showPropertyPopup(prop) {
+            const popup = document.getElementById('propertyPopup');
+            const title = document.getElementById('popupTitle');
+            const content = document.getElementById('popupContent');
+            
+            title.textContent = prop.title;
+            
+            let html = `
+                <div class="popup-row">
+                    <span class="popup-label">地址</span>
+                    <span class="popup-value">${prop.address}</span>
+                </div>
+                <div class="popup-row">
+                    <span class="popup-label">租金</span>
+                    <span class="popup-value highlight">$${prop.rent_monthly.toLocaleString()}</span>
+                </div>
+                <div class="popup-row">
+                    <span class="popup-label">坪數</span>
+                    <span class="popup-value">${prop.area} 坪</span>
+                </div>
+                <div class="popup-row">
+                    <span class="popup-label">房型</span>
+                    <span class="popup-value">${prop.room_type}</span>
+                </div>
+                <div class="popup-row">
+                    <span class="popup-label">距離</span>
+                    <span class="popup-value">${Math.round(prop.distance)} 公尺</span>
+                </div>
+            `;
+            
+            // 進階模式顯示樓層
+            if (advancedMode && prop.floor) {
+                html += `
+                    <div class="popup-row">
+                        <span class="popup-label">樓層</span>
+                        <span class="popup-value">${prop.floor}</span>
+                    </div>
+                `;
+            }
+            
+            html += `
+                <div class="popup-row">
+                    <span class="popup-label">留置週數</span>
+                    <span class="popup-value">${prop.weeks_since_first_published} 週</span>
+                </div>
+                <div class="popup-row">
+                    <span class="popup-label">首發日期</span>
+                    <span class="popup-value">${prop.first_published_date}</span>
+                </div>
+            `;
+            
+            content.innerHTML = html;
+            popup.classList.add('active');
+        }
+        
+        // 關閉房源詳情
+        function closePropertyPopup() {
+            document.getElementById('propertyPopup').classList.remove('active');
+        }
+        
+        // 更新圖表
+        function updateCharts(data) {
+            // 房型分佈
+            const roomTypes = {};
+            data.properties.forEach(prop => {
+                roomTypes[prop.room_type] = (roomTypes[prop.room_type] || 0) + 1;
+            });
+            
+            const roomTypeCtx = document.getElementById('roomTypeChart').getContext('2d');
+            if (roomTypeChart) roomTypeChart.destroy();
+            roomTypeChart = new Chart(roomTypeCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(roomTypes),
+                    datasets: [{
+                        data: Object.values(roomTypes),
+                        backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+            
+            // 租金分析
+            const rentRanges = { '<15k': 0, '15-25k': 0, '25-35k': 0, '>35k': 0 };
+            data.properties.forEach(prop => {
+                if (prop.rent_monthly < 15000) rentRanges['<15k']++;
+                else if (prop.rent_monthly < 25000) rentRanges['15-25k']++;
+                else if (prop.rent_monthly < 35000) rentRanges['25-35k']++;
+                else rentRanges['>35k']++;
+            });
+            
+            const rentCtx = document.getElementById('rentAnalysisChart').getContext('2d');
+            if (rentAnalysisChart) rentAnalysisChart.destroy();
+            rentAnalysisChart = new Chart(rentCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(rentRanges),
+                    datasets: [{
+                        label: '房源數',
+                        data: Object.values(rentRanges),
+                        backgroundColor: '#2e7d32'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+        
+        // 更新熱力圖
+        function updateHeatmap(data) {
+            if (heatmapLayer) {
+                heatmapLayer.setMap(null);
+            }
+            
+            // 根據進階模式設定半徑
+            const radius = advancedMode ? heatmapRadius : (heatmapMode === 'rent' ? 50 : 80);
+            
+            if (heatmapMode === 'rent') {
+                const rentData = data.properties.map(prop => ({
+                    location: new google.maps.LatLng(prop.latitude, prop.longitude),
+                    weight: prop.rent_monthly / 50000
+                }));
+                
+                heatmapLayer = new google.maps.visualization.HeatmapLayer({
+                    data: rentData,
+                    map: map,
+                    radius: radius,
+                    opacity: 0.6
+                });
+            } else if (heatmapMode === 'density') {
+                const densityData = data.properties.map(prop => 
+                    new google.maps.LatLng(prop.latitude, prop.longitude)
+                );
+                
+                heatmapLayer = new google.maps.visualization.HeatmapLayer({
+                    data: densityData,
+                    map: map,
+                    radius: radius,
+                    opacity: 0.6
+                });
+            }
+        }
+        
+        // 設置熱力圖模式
+        function setHeatmapMode(mode) {
+            heatmapMode = mode;
+            document.getElementById('heatmapRent').classList.toggle('active', mode === 'rent');
+            document.getElementById('heatmapDensity').classList.toggle('active', mode === 'density');
+            if (currentData) {
+                updateHeatmap(currentData);
+            }
+        }
+        
+        // 進阶模式開關
+        function toggleAdvancedMode() {
+            advancedMode = !advancedMode;
+            document.getElementById('advancedToggle').classList.toggle('active');
+            
+            // 顯示/隱藏進階模式控制面板
+            const advancedControls = document.getElementById('advancedHeatmapControls');
+            if (advancedControls) {
+                advancedControls.style.display = advancedMode ? 'block' : 'none';
+            }
+        }
+        
+        // 版本控制
+        function previousVersion() {
+            if (currentVersionIndex > 0) {
+                currentVersionIndex--;
+                document.getElementById('versionSelect').value = currentVersionIndex;
+                onVersionChange();
+            }
+        }
+        
+        function nextVersion() {
+            if (currentVersionIndex < versions.length - 1) {
+                currentVersionIndex++;
+                document.getElementById('versionSelect').value = currentVersionIndex;
+                onVersionChange();
+            }
+        }
+        
+        function toggleAnimation() {
+            animationRunning = !animationRunning;
+            if (animationRunning) {
+                playAnimation();
+            }
+        }
+        
+        async function playAnimation() {
+            while (animationRunning && currentVersionIndex < versions.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                nextVersion();
+            }
+            animationRunning = false;
+        }
+
+
+
+        // 熱力圖影響範圍拉霸條事件監聽
+        document.addEventListener('DOMContentLoaded', () => {
+            const radiusSlider = document.getElementById('heatmapRadius');
+            if (radiusSlider) {
+                radiusSlider.addEventListener('input', (e) => {
+                    heatmapRadius = parseInt(e.target.value);
+                    document.getElementById('radiusValue').textContent = heatmapRadius + 'm';
+                    if (currentData) {
+                        updateHeatmap(currentData);
+                    }
+                });
+            }
+        });
+    </script>
+
+
+
+    </script>
+</body>
+</html>

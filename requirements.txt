@@ -1,0 +1,9 @@
+# 租屋行情分析系統 - Python 依賴套件
+# 支援 Python 3.10 - 3.14
+
+fastapi
+uvicorn
+pydantic
+requests
+pandas
+python-multipart
