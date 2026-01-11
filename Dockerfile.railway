@@ -10,11 +10,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY main_v4.py .
 COPY index_v6.html .
 
-# 複製 CSV 文件到容器
-COPY upload/ /app/upload/
-
 # 創建必要的目錄
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data /app/upload
+
+# 複製 CSV 文件到容器
+COPY upload/*.csv /app/upload/ || true
 
 # 設置環境變量
 ENV PYTHONUNBUFFERED=1
