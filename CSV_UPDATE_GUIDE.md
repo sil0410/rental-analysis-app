@@ -149,7 +149,7 @@ rental-analysis-app/
    
    **提示：** 如果提示輸入用戶名和密碼，使用：
    - 用戶名：`sil0410`
-   - 密碼：使用您的 **GitHub Personal Access Token**（`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`）
+   - 密碼：使用您的 **GitHub Personal Access Token**（在 GitHub 設置中生成）
 
 #### Mac/Linux 用戶
 
