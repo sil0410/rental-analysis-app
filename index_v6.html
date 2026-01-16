@@ -91,13 +91,20 @@
         /* 搜索欄 */
         .search-bar {
             background: white;
-            padding: 15px 20px;
+            padding: 12px 10px;
             display: flex;
-            gap: 15px;
+            gap: 10px;
             align-items: center;
             flex-wrap: wrap;
             border-bottom: 1px solid #e0e0e0;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        @media (max-width: 768px) {
+            .search-bar {
+                padding: 10px 8px;
+                gap: 8px;
+            }
         }
         
         .search-group {
@@ -112,6 +119,12 @@
             white-space: nowrap;
         }
         
+        @media (max-width: 768px) {
+            .search-group label {
+                font-size: 12px;
+            }
+        }
+        
         .search-group input,
         .search-group select {
             padding: 8px 12px;
@@ -119,6 +132,17 @@
             border-radius: 4px;
             font-size: 14px;
             font-family: inherit;
+            min-width: 60px;
+        }
+        
+        @media (max-width: 768px) {
+            .search-group input,
+            .search-group select {
+                padding: 6px 8px;
+                font-size: 13px;
+                min-width: 50px;
+                max-width: 100px;
+            }
         }
         
         .search-group input:focus,
@@ -137,6 +161,14 @@
             cursor: pointer;
             font-weight: 600;
             transition: background 0.3s;
+            font-size: 14px;
+        }
+        
+        @media (max-width: 768px) {
+            .btn-search {
+                padding: 6px 12px;
+                font-size: 12px;
+            }
         }
         
         .btn-search:hover {
@@ -333,6 +365,18 @@
         }
         
         /* 響應式設計 */
+        /* 進階模式控制 */
+        #advancedHeatmapControls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        #advancedHeatmapControls input[type="range"] {
+            flex: 1;
+            min-width: 100px;
+        }
+        
         @media (max-width: 1024px) {
             .right-panel {
                 width: 300px;
@@ -349,10 +393,69 @@
                 height: 300px;
                 border-left: none;
                 border-top: 1px solid #e0e0e0;
+                padding: 12px;
             }
             
             #map {
                 height: calc(100vh - 440px);
+            }
+            
+            .navbar h1 {
+                font-size: 16px;
+            }
+            
+            .navbar-status {
+                font-size: 11px;
+            }
+            
+            .advanced-toggle {
+                font-size: 11px;
+                gap: 5px;
+            }
+            
+            .toggle-switch {
+                width: 40px;
+                height: 20px;
+            }
+            
+            .toggle-switch::after {
+                width: 16px;
+                height: 16px;
+                top: 2px;
+                left: 2px;
+            }
+            
+            .toggle-switch.active::after {
+                left: 22px;
+            }
+            
+            #advancedHeatmapControls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            #advancedHeatmapControls input[type="range"] {
+                width: 100%;
+                min-width: unset;
+            }
+            
+            .panel-section {
+                margin-bottom: 15px;
+                padding: 10px;
+            }
+            
+            .panel-section h3 {
+                font-size: 12px;
+                margin-bottom: 8px;
+            }
+            
+            .stat-row {
+                font-size: 12px;
+                padding: 6px 0;
+            }
+            
+            .chart-container {
+                height: 150px;
             }
         }
     </style>
