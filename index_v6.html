@@ -476,8 +476,26 @@
     <!-- 搜索欄 -->
     <div class="search-bar">
         <div class="search-group">
-            <label for="address">📍 地址</label>
-            <input type="text" id="address" placeholder="例如：中和區永和路76號" value="中和區永和路76號">
+            <label for="citySelect">📍 縣市</label>
+            <select id="citySelect" onchange="onCityChange()">
+                <option value="">選擇縣市</option>
+                <option value="臺北市">臺北市</option>
+                <option value="新北市">新北市</option>
+                <option value="基隆市">基隆市</option>
+                <option value="桃園市">桃園市</option>
+            </select>
+        </div>
+        
+        <div class="search-group">
+            <label for="districtSelect">區域</label>
+            <select id="districtSelect">
+                <option value="">選擇區域</option>
+            </select>
+        </div>
+        
+        <div class="search-group">
+            <label for="address">詳細地址</label>
+            <input type="text" id="address" placeholder="例如：永和路76號" value="">
         </div>
         
         <div class="search-group">
@@ -642,6 +660,14 @@
         let heatmapMode = 'rent'; // 'rent' 或 'density'
         let heatmapRadius = 30; // 熱力圖影響範圍 (米)
         
+        // 地區數據
+        const districtsData = {
+            '臺北市': ['中正區', '大同區', '中山區', '萬華區', '信義區', '松山區', '大安區', '南港區', '北投區', '內湖區', '士林區', '文山區'],
+            '新北市': ['板橋區', '新莊區', '泰山區', '林口區', '淡水區', '金山區', '八里區', '萬里區', '石門區', '三芝區', '瑞芳區', '汐止區', '平溪區', '貢寮區', '雙溪區', '深坑區', '石碇區', '新店區', '坪林區', '烏來區', '中和區', '永和區', '土城區', '三峽區', '樹林區', '鶯歌區', '三重區', '蘆洲區', '五股區'],
+            '基隆市': ['仁愛區', '中正區', '信義區', '中山區', '安樂區', '暖暖區', '七堵區'],
+            '桃園市': ['桃園區', '中壢區', '平鎮區', '八德區', '楊梅區', '蘆竹區', '龜山區', '龍潭區', '大溪區', '大園區', '觀音區', '新屋區', '復興區']
+        };
+        
         // 初始化
         window.addEventListener('load', () => {
             initMap();
@@ -712,32 +738,74 @@
             }
         }
         
+        // 縣市變更
+        function onCityChange() {
+            const citySelect = document.getElementById('citySelect');
+            const districtSelect = document.getElementById('districtSelect');
+            const selectedCity = citySelect.value;
+            
+            // 清空區域選項
+            districtSelect.innerHTML = '<option value="">選擇區域</option>';
+            
+            if (selectedCity && districtsData[selectedCity]) {
+                const districts = districtsData[selectedCity];
+                districts.forEach(district => {
+                    const option = document.createElement('option');
+                    option.value = district;
+                    option.textContent = district;
+                    districtSelect.appendChild(option);
+                });
+            }
+        }
+        
         // 版本變更
         function onVersionChange() {
             const select = document.getElementById('versionSelect');
             currentVersionIndex = parseInt(select.value);
-            // 使用默認地址執行搜尋
+            // 使用默認地址執行搜索
             performSearchWithDefaultAddress();
         }
         
         // 使用默認地址執行搜尋
         async function performSearchWithDefaultAddress() {
-            // 設置默認地址為中和區永和路（中心位置）
-            const address = document.getElementById('address').value || '新北市中和區永和路';
-            document.getElementById('address').value = address;
+            // 設置默認值：新北市中和區
+            const citySelect = document.getElementById('citySelect');
+            const districtSelect = document.getElementById('districtSelect');
+            const addressInput = document.getElementById('address');
+            
+            if (!citySelect.value) {
+                citySelect.value = '新北市';
+                onCityChange();
+            }
+            if (!districtSelect.value) {
+                districtSelect.value = '中和區';
+            }
+            if (!addressInput.value) {
+                addressInput.value = '永和路';
+            }
+            
             await performSearch();
         }
         
         // 執行搜尋
         async function performSearch() {
-            const address = document.getElementById('address').value;
+            const city = document.getElementById('citySelect').value;
+            const district = document.getElementById('districtSelect').value;
+            const detailedAddress = document.getElementById('address').value;
+            
+            // 組合完整地址
+            let address = '';
+            if (city) address += city;
+            if (district) address += district;
+            if (detailedAddress) address += detailedAddress;
+            
             const distanceMin = parseInt(document.getElementById('distanceMin').value) || 0;
             const distanceMax = parseInt(document.getElementById('distanceMax').value) || 5000;
             const buildingType = document.getElementById('buildingType').value;
             const roomType = document.getElementById('roomType').value;
             
             if (!address) {
-                alert('請輸入地址');
+                alert('請選擇縣市和區域');
                 return;
             }
             
