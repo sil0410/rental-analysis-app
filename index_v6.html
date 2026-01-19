@@ -467,8 +467,8 @@
         <div class="navbar-right">
             <div class="navbar-status" id="statusText">載入中...</div>
             <div class="advanced-toggle">
-                <span>進階模式</span>
-                <div class="toggle-switch" id="advancedToggle" onclick="toggleAdvancedMode()"></div>
+                <span>進阶模式</span>
+                <div class="toggle-switch" id="advancedToggle" onclick="showPasswordPrompt()"></div>
             </div>
         </div>
     </div>
@@ -535,8 +535,8 @@
             <div id="advancedHeatmapControls" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee;">
                 <label style="font-size: 12px; color: #666;">📈 熱力圖影響範圍</label>
                 <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
-                    <input type="range" id="heatmapRadius" min="10" max="100" value="30" step="5" style="flex: 1;">
-                    <span id="radiusValue" style="font-size: 12px; color: #666; min-width: 35px;">30m</span>
+                    <input type="range" id="heatmapRadius" min="10" max="100" value="40" step="5" style="flex: 1;">
+                    <span id="radiusValue" style="font-size: 12px; color: #666; min-width: 35px;">40m</span>
                 </div>
             </div>
         </div>
@@ -585,7 +585,7 @@
         </div>
         
         <!-- 右側面板 -->
-        <div class="right-panel">
+        <div class="right-panel" style="display: none;">
             <div class="panel-section">
                 <h3>區域統計</h3>
                 <div class="stat-row">
@@ -639,6 +639,20 @@
         <div class="popup-content" id="popupContent">
             <!-- 動態生成 -->
         </div>
+    <!-- 密碼輸入彈窗 -->
+    <div class="property-popup" id="passwordPopup" style="display: none;">
+        <div class="popup-header">
+            <span id="popupTitle">進階模式驗證</span>
+            <button class="popup-close" onclick="closePasswordPopup()">×</button>
+        </div>
+        <div class="popup-content" style="text-align: center; padding: 30px;">
+            <p style="margin-bottom: 20px; font-size: 16px; color: #333;">請輸入 4 位數字密碼</p>
+            <input type="password" id="passwordInput" placeholder="輸入密碼" maxlength="4" style="font-size: 20px; padding: 10px; width: 150px; text-align: center; letter-spacing: 5px; border: 2px solid #ddd; border-radius: 5px;" onkeypress="handlePasswordKeyPress(event)">
+            <div style="margin-top: 20px;">
+                <button onclick="verifyPassword()" style="padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; margin-right: 10px;">確認</button>
+                <button onclick="closePasswordPopup()" style="padding: 10px 20px; background-color: #f44336; color: white; border: none; border-radius: 5px; cursor: pointer;">取消</button>
+            </div>
+        </div>
     </div>
     
     <script>
@@ -657,7 +671,7 @@
         let rentAnalysisChart = null;
         let heatmapLayer = null;
         let heatmapMode = 'density'; // 預設為房源密度
-        let heatmapRadius = 30; // 熱力圖影響範圍 (米)
+        let heatmapRadius = 40; // 熱力圖影響範圍 (米) - 預設 40M
         
         // 地區數據
         const districtsData = {
@@ -1252,7 +1266,47 @@
             }
         }
         
-        // 進阶模式開關
+        
+        // 密碼驗證相關變量
+        const ADVANCED_PASSWORD = "1234"; // 預設密碼
+        
+        // 顯示密碼輸入彈窗
+        function showPasswordPrompt() {
+            document.getElementById('passwordPopup').classList.add('active');
+            document.getElementById('passwordInput').value = '';
+            document.getElementById('passwordInput').focus();
+        }
+        
+        // 關閉密碼輸入彈窗
+        function closePasswordPopup() {
+            document.getElementById('passwordPopup').classList.remove('active');
+            document.getElementById('passwordInput').value = '';
+        }
+        
+        // 處理密碼輸入的回車鍵
+        function handlePasswordKeyPress(event) {
+            if (event.key === 'Enter') {
+                verifyPassword();
+            }
+        }
+        
+        // 驗證密碼
+        function verifyPassword() {
+            const password = document.getElementById('passwordInput').value;
+            
+            if (password === ADVANCED_PASSWORD) {
+                // 密碼正確，進入進階模式
+                closePasswordPopup();
+                toggleAdvancedMode();
+            } else {
+                // 密碼錯誤
+                alert('密碼錯誤，請重試');
+                document.getElementById('passwordInput').value = '';
+                document.getElementById('passwordInput').focus();
+            }
+        }
+        
+        // 進阶模式開關（原有函數，保持不變）
         function toggleAdvancedMode() {
             advancedMode = !advancedMode;
             document.getElementById('advancedToggle').classList.toggle('active');
@@ -1262,7 +1316,14 @@
             if (advancedControls) {
                 advancedControls.style.display = advancedMode ? 'block' : 'none';
             }
+            
+            // 顯示/隱藏右側面板中的案件資訊
+            const rightPanel = document.querySelector('.right-panel');
+            if (rightPanel) {
+                rightPanel.style.display = advancedMode ? 'block' : 'none';
+            }
         }
+
         
         // 版本控制
         function previousVersion() {
