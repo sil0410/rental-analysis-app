@@ -610,9 +610,114 @@ async def analysis_v4(
             'message': str(e)
         }
 
+# ============ 管理員 API ============
+
+# 管理員密碼（MVP 測試用）
+ADMIN_PASSWORD = "1234"
+
+class ResetRequest(BaseModel):
+    password: str
+    confirm: bool = False
+
+@app.post("/api/admin/reset-database")
+async def reset_database(request: ResetRequest):
+    """
+    清空數據庫 API（需要密碼驗證）
+    
+    使用方法：
+    POST /api/admin/reset-database
+    Body: {"password": "1234", "confirm": true}
+    """
+    # 驗證密碼
+    if request.password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="密碼錯誤")
+    
+    # 驗證確認參數
+    if not request.confirm:
+        raise HTTPException(status_code=400, detail="請設置 confirm=true 以確認清空操作")
+    
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # 統計刪除前的數據
+        cursor.execute("SELECT COUNT(*) FROM properties")
+        properties_count = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM versions")
+        versions_count = cursor.fetchone()[0]
+        
+        # 清空所有表
+        cursor.execute("DELETE FROM properties")
+        cursor.execute("DELETE FROM versions")
+        
+        # 重置自增 ID
+        cursor.execute("DELETE FROM sqlite_sequence WHERE name='properties'")
+        cursor.execute("DELETE FROM sqlite_sequence WHERE name='versions'")
+        
+        conn.commit()
+        conn.close()
+        
+        return {
+            "status": "success",
+            "message": "數據庫已清空",
+            "deleted": {
+                "properties": properties_count,
+                "versions": versions_count
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"清空失敗: {str(e)}")
+
+@app.get("/api/admin/database-status")
+async def database_status():
+    """
+    查看數據庫狀態（不需要密碼）
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # 統計房源數量
+        cursor.execute("SELECT COUNT(*) FROM properties")
+        total_properties = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM properties WHERE status='active'")
+        active_properties = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM properties WHERE status='deleted'")
+        deleted_properties = cursor.fetchone()[0]
+        
+        # 統計版本數量
+        cursor.execute("SELECT COUNT(*) FROM versions")
+        versions_count = cursor.fetchone()[0]
+        
+        # 獲取所有版本
+        cursor.execute("SELECT week_id, upload_date FROM versions ORDER BY week_id DESC")
+        versions = [{"week_id": row[0], "upload_date": row[1]} for row in cursor.fetchall()]
+        
+        conn.close()
+        
+        return {
+            "status": "success",
+            "database": {
+                "total_properties": total_properties,
+                "active_properties": active_properties,
+                "deleted_properties": deleted_properties,
+                "versions_count": versions_count,
+                "versions": versions
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"查詢失敗: {str(e)}")
+
 # ============ 靜態文件 ============
 
-# 挂載靜態文件（必須在所有 API 路由之二）
+# 挂載靜態文件（必須在所有 API 路由之後）
 app.mount("/", StaticFiles(directory=os.path.dirname(__file__), html=True), name="static")
 
 # ============ 啟動 ============
