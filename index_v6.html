@@ -466,8 +466,9 @@
         <h1>🏠 租屋行情分析 - Google Maps 版 v6.0</h1>
         <div class="navbar-right">
             <div class="navbar-status" id="statusText">載入中...</div>
+            <button id="adminBtn" onclick="showAdminPanel()" style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.5); color: white; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 12px;">⚙️ 管理</button>
             <div class="advanced-toggle">
-                <span>進阶模式</span>
+                <span>進階模式</span>
                 <div class="toggle-switch" id="advancedToggle" onclick="showPasswordPrompt()"></div>
             </div>
         </div>
@@ -656,6 +657,28 @@
                 <button onclick="verifyPassword()" style="padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; margin-right: 10px;">確認</button>
                 <button onclick="closePasswordPopup()" style="padding: 10px 20px; background-color: #f44336; color: white; border: none; border-radius: 5px; cursor: pointer;">取消</button>
             </div>
+        </div>
+    </div>
+    
+    <!-- 管理員面板 -->
+    <div class="property-popup" id="adminPanel" style="display: none;">
+        <div class="popup-header" style="background: #1976d2;">
+            <span>⚙️ 管理員面板</span>
+            <button class="popup-close" onclick="closeAdminPanel()">×</button>
+        </div>
+        <div class="popup-content" style="padding: 20px;">
+            <h4 style="margin-bottom: 15px; color: #333;">數據庫狀態</h4>
+            <div id="dbStatus" style="background: #f5f5f5; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                <p>載入中...</p>
+            </div>
+            
+            <h4 style="margin-bottom: 15px; color: #333;">清空數據庫</h4>
+            <p style="color: #666; font-size: 14px; margin-bottom: 10px;">警告：此操作將刪除所有房源數據，無法復原！</p>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="password" id="adminPassword" placeholder="輸入管理密碼" style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                <button onclick="resetDatabase()" style="padding: 10px 20px; background-color: #f44336; color: white; border: none; border-radius: 5px; cursor: pointer; white-space: nowrap;">🗑️ 清空數據庫</button>
+            </div>
+            <p style="color: #999; font-size: 12px; margin-top: 10px;">預設密碼：1234</p>
         </div>
     </div>
     
@@ -1321,7 +1344,7 @@
             // 不再需要
         }
         
-        // 進阶模式開關（原有函數，保持不變）
+        // 進階模式開關（原有函數，保持不變）
         function toggleAdvancedMode() {
             advancedMode = !advancedMode;
             document.getElementById('advancedToggle').classList.toggle('active');
@@ -1336,6 +1359,84 @@
             const rightPanel = document.querySelector('.right-panel');
             if (rightPanel) {
                 rightPanel.style.display = advancedMode ? 'block' : 'none';
+            }
+        }
+        
+        // ============ 管理員面板函數 ============
+        
+        // 顯示管理員面板
+        function showAdminPanel() {
+            document.getElementById('adminPanel').style.display = 'block';
+            loadDatabaseStatus();
+        }
+        
+        // 關閉管理員面板
+        function closeAdminPanel() {
+            document.getElementById('adminPanel').style.display = 'none';
+        }
+        
+        // 載入數據庫狀態
+        async function loadDatabaseStatus() {
+            const statusDiv = document.getElementById('dbStatus');
+            statusDiv.innerHTML = '<p>載入中...</p>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin/database-status`);
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    const db = data.database;
+                    statusDiv.innerHTML = `
+                        <p><strong>總房源數：</strong>${db.total_properties}</p>
+                        <p><strong>活躍房源：</strong>${db.active_properties}</p>
+                        <p><strong>已下架：</strong>${db.deleted_properties}</p>
+                        <p><strong>版本數：</strong>${db.versions_count}</p>
+                        <p><strong>版本列表：</strong>${db.versions.map(v => v.week_id).join(', ') || '無'}</p>
+                    `;
+                } else {
+                    statusDiv.innerHTML = '<p style="color: red;">載入失敗</p>';
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<p style="color: red;">錯誤：${error.message}</p>`;
+            }
+        }
+        
+        // 清空數據庫
+        async function resetDatabase() {
+            const password = document.getElementById('adminPassword').value;
+            
+            if (!password) {
+                alert('請輸入管理密碼');
+                return;
+            }
+            
+            if (!confirm('確定要清空所有數據嗎？\n\n此操作無法復原！')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin/reset-database`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        password: password,
+                        confirm: true
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.status === 'success') {
+                    alert(`✅ 數據庫已清空！\n\n刪除了 ${data.deleted.properties} 筆房源數據\n刪除了 ${data.deleted.versions} 個版本`);
+                    loadDatabaseStatus();
+                    loadVersions(); // 重新載入版本列表
+                } else {
+                    alert(`❌ 清空失敗：${data.detail || '未知錯誤'}`);
+                }
+            } catch (error) {
+                alert(`❌ 錯誤：${error.message}`);
             }
         }
 
