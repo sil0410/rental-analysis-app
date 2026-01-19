@@ -585,7 +585,7 @@
         </div>
         
         <!-- 右側面板 -->
-        <div class="right-panel" style="display: none;">
+        <div class="right-panel">
             <div class="panel-section">
                 <h3>區域統計</h3>
                 <div class="stat-row">
@@ -611,6 +611,10 @@
                 <div class="stat-row">
                     <span class="stat-label">平均坪數</span>
                     <span class="stat-value" id="avgArea">-</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">單坪租金</span>
+                    <span class="stat-value" id="rentPerPing">-</span>
                 </div>
             </div>
             
@@ -986,6 +990,10 @@
             document.getElementById('deletedCount').textContent = summary.deleted_properties;
             document.getElementById('avgRent').textContent = `$${Math.round(summary.avg_rent_all).toLocaleString()}`;
             document.getElementById('avgArea').textContent = `${summary.avg_area.toFixed(1)} 坪`;
+            
+            // 計算單坪租金
+            const rentPerPing = summary.avg_area > 0 ? Math.round(summary.avg_rent_all / summary.avg_area) : 0;
+            document.getElementById('rentPerPing').textContent = `$${rentPerPing.toLocaleString()}/坪`;
             
             // 添加標記
             const heatmapData = [];
