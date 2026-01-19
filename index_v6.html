@@ -1281,40 +1281,44 @@
         // 密碼驗證相關變量
         const ADVANCED_PASSWORD = "1234"; // 預設密碼
         
-        // 顯示密碼輸入彈窗
+        // 顯示密碼輸入彈窗（使用原生 prompt 對話框）
         function showPasswordPrompt() {
-            document.getElementById('passwordPopup').classList.add('active');
-            document.getElementById('passwordInput').value = '';
-            document.getElementById('passwordInput').focus();
-        }
-        
-        // 關閉密碼輸入彈窗
-        function closePasswordPopup() {
-            document.getElementById('passwordPopup').classList.remove('active');
-            document.getElementById('passwordInput').value = '';
-        }
-        
-        // 處理密碼輸入的回車鍵
-        function handlePasswordKeyPress(event) {
-            if (event.key === 'Enter') {
-                verifyPassword();
+            // 如果已經在進階模式，直接關閉
+            if (advancedMode) {
+                toggleAdvancedMode();
+                return;
             }
-        }
-        
-        // 驗證密碼
-        function verifyPassword() {
-            const password = document.getElementById('passwordInput').value;
+            
+            // 使用原生 prompt 對話框
+            const password = prompt('請輸入 4 位數字密碼以進入進階模式:');
+            
+            if (password === null) {
+                // 用戶點擊了取消
+                return;
+            }
             
             if (password === ADVANCED_PASSWORD) {
                 // 密碼正確，進入進階模式
-                closePasswordPopup();
                 toggleAdvancedMode();
             } else {
                 // 密碼錯誤
                 alert('密碼錯誤，請重試');
-                document.getElementById('passwordInput').value = '';
-                document.getElementById('passwordInput').focus();
             }
+        }
+        
+        // 關閉密碼輸入彈窗（保留但不再使用）
+        function closePasswordPopup() {
+            // 不再需要
+        }
+        
+        // 處理密碼輸入的回車鍵（保留但不再使用）
+        function handlePasswordKeyPress(event) {
+            // 不再需要
+        }
+        
+        // 驗證密碼（保留但不再使用）
+        function verifyPassword() {
+            // 不再需要
         }
         
         // 進阶模式開關（原有函數，保持不變）
