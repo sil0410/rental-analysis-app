@@ -511,11 +511,11 @@
         <div class="search-group">
             <label for="roomType">房型</label>
             <select id="roomType">
-                <option value="">全部</option>
-                <option value="1房">套房</option>
+                <option value="全部">全部</option>
+                <option value="套房">套房</option>
                 <option value="2房">2房</option>
                 <option value="3房">3房</option>
-                <option value="4房">3房以上</option>
+                <option value="3房以上">3房以上</option>
             </select>
         </div>
         
@@ -954,6 +954,7 @@
                     // 查詢 API（傳遞座標以確保前後端一致）
                     const params = new URLSearchParams({
                         address: address,
+                        district: district,
                         distance_min: distanceMin,
                         distance_max: distanceMax,
                         building_type: buildingType,
