@@ -1,7 +1,8 @@
 """
-租屋行情分析系統 - 版本控制 API v5.0
+租屋行情分析系統 - 版本控制 API v5.1
 支持週次管理、動畫播放、留置時間著色、建築類型篩選和進階模式
-新增：支援案件編號（property_id）進行精確房源追蹤
+支援案件編號（property_id）進行精確房源追蹤
+支援原始 CSV 格式（度分秒座標自動轉換）
 """
 
 import sqlite3
@@ -17,7 +18,7 @@ from typing import List, Optional
 import math
 
 # 初始化 FastAPI
-app = FastAPI(title="租屋行情分析 API v5.0")
+app = FastAPI(title="租屋行情分析 API v5.1")
 
 # 添加 CORS 中間件
 app.add_middleware(
@@ -47,7 +48,6 @@ def init_database():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # 檢查是否已有版本表
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS versions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,7 +57,6 @@ def init_database():
         )
     """)
     
-    # 創建 properties 表（如果不存在）
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS properties (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,11 +78,9 @@ def init_database():
         )
     """)
     
-    # 檢查 properties 表是否有必要字段
     cursor.execute("PRAGMA table_info(properties)")
     columns = {row[1] for row in cursor.fetchall()}
     
-    # 添加缺失的欄位
     if 'property_id' not in columns:
         cursor.execute("ALTER TABLE properties ADD COLUMN property_id TEXT")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_property_id ON properties(property_id)")
@@ -144,6 +141,108 @@ def calculate_weeks_since_published(first_published_date: str) -> int:
     except:
         return 0
 
+def parse_dms_coordinate(coord_str: str):
+    """
+    解析度分秒格式的座標字串
+    支援格式: 25°0'17"N 121°29'47"E 或 25°0'17"N, 121°29'47"E
+    返回: (緯度, 經度) 或 (0, 0) 如果解析失敗
+    """
+    if not coord_str or coord_str == 'nan':
+        return 0, 0
+    
+    try:
+        # 移除多餘空白和逗號
+        coord_str = str(coord_str).strip()
+        
+        # 匹配度分秒格式: 25°0'17"N 或 121°29'47"E
+        pattern = r"(\d+)°(\d+)'(\d+(?:\.\d+)?)\"([NSEW])"
+        matches = re.findall(pattern, coord_str)
+        
+        if len(matches) >= 2:
+            lat_match = None
+            lng_match = None
+            
+            for match in matches:
+                deg, min_, sec, direction = match
+                if direction in ['N', 'S']:
+                    lat_match = (float(deg), float(min_), float(sec), direction)
+                elif direction in ['E', 'W']:
+                    lng_match = (float(deg), float(min_), float(sec), direction)
+            
+            if lat_match and lng_match:
+                # 計算十進位緯度
+                lat = lat_match[0] + lat_match[1]/60 + lat_match[2]/3600
+                if lat_match[3] == 'S':
+                    lat = -lat
+                
+                # 計算十進位經度
+                lng = lng_match[0] + lng_match[1]/60 + lng_match[2]/3600
+                if lng_match[3] == 'W':
+                    lng = -lng
+                
+                return round(lat, 6), round(lng, 6)
+        
+        return 0, 0
+    except Exception as e:
+        print(f"座標解析錯誤: {coord_str} - {e}")
+        return 0, 0
+
+def extract_district_from_address(address: str) -> tuple:
+    """
+    從地址中提取城市和區域
+    返回: (城市, 區域, 清理後的地址)
+    """
+    if not address:
+        return '', '', ''
+    
+    address = str(address).strip()
+    
+    # 定義城市和區域的映射
+    cities = ['臺北市', '台北市', '新北市', '基隆市', '桃園市', '新竹市', '新竹縣']
+    
+    # 新北市的區域
+    new_taipei_districts = [
+        '板橋區', '三重區', '中和區', '永和區', '新莊區', '新店區', '土城區',
+        '蘆洲區', '樹林區', '汐止區', '鶯歌區', '三峽區', '淡水區', '瑞芳區',
+        '五股區', '泰山區', '林口區', '深坑區', '石碇區', '坪林區', '三芝區',
+        '石門區', '八里區', '平溪區', '雙溪區', '貢寮區', '金山區', '萬里區',
+        '烏來區'
+    ]
+    
+    city = ''
+    district = ''
+    
+    # 檢查地址是否以城市開頭
+    for c in cities:
+        if address.startswith(c):
+            city = c
+            address = address[len(c):]
+            break
+    
+    # 檢查是否包含區域
+    for d in new_taipei_districts:
+        if address.startswith(d):
+            district = d
+            if not city:
+                city = '新北市'
+            break
+        elif d in address:
+            district = d
+            if not city:
+                city = '新北市'
+            break
+    
+    # 如果沒有找到城市但找到了區域，根據區域推斷城市
+    if not city and district:
+        city = '新北市'
+    
+    # 組合完整地址
+    full_address = city + address if city and not address.startswith(city) else address
+    if city and district and not full_address.startswith(city):
+        full_address = city + full_address
+    
+    return city, district, full_address
+
 # ============ CSV 導入功能 ============
 
 def auto_import_csv_files():
@@ -185,35 +284,58 @@ def auto_import_csv_files():
             csv_path = os.path.join(upload_dir, csv_filename)
             df = pd.read_csv(csv_path, encoding='utf-8-sig')
             
+            # 從文件名提取建築類型
             filename_building_type = extract_building_type_from_filename(csv_filename)
             
+            # 從文件名提取週次
             filename_week = None
             week_match = re.search(r'_(\d{4})\.csv$', csv_filename)
             if week_match:
                 filename_week = week_match.group(1)
+            # 也嘗試匹配 _2603_merged.csv 格式
+            week_match2 = re.search(r'_(\d{4})_merged\.csv$', csv_filename)
+            if week_match2:
+                filename_week = week_match2.group(1)
+            
+            print(f"  處理: {csv_filename} (建築類型: {filename_building_type}, 週次: {filename_week})")
             
             for _, row in df.iterrows():
+                # 提取案件編號
                 property_id = row.get('案件編號', '')
                 if pd.isna(property_id) or not property_id:
                     continue
                 property_id = str(int(property_id) if isinstance(property_id, float) else property_id)
                 
+                # 提取標題
                 title = str(row.get('標題', ''))
-                address = str(row.get('地址', ''))
                 
+                # 提取地址並補充城市區域
+                raw_address = str(row.get('地址', ''))
+                city, district, address = extract_district_from_address(raw_address)
+                
+                # 租金
                 rent = row.get('租金', 0)
                 if pd.isna(rent):
                     rent = 0
                 rent = int(rent)
                 
+                # 坪數（支援「坪數」和「坡數」兩種欄位名）
                 area = row.get('坪數', row.get('坡數', 0))
                 if pd.isna(area):
                     area = 0
                 area = float(area)
                 
+                # 房型
                 room_type = str(row.get('房型', ''))
-                floor = str(row.get('樓層', ''))
+                if room_type == 'nan':
+                    room_type = ''
                 
+                # 樓層
+                floor = str(row.get('樓層', ''))
+                if floor == 'nan':
+                    floor = ''
+                
+                # 建築類型（優先從 CSV 欄位讀取，否則從文件名推斷）
                 csv_building_type = str(row.get('建築類型', ''))
                 if csv_building_type and csv_building_type != 'nan':
                     if '電梯' in csv_building_type or '大樓' in csv_building_type:
@@ -225,27 +347,49 @@ def auto_import_csv_files():
                 else:
                     building_type = filename_building_type
                 
-                latitude = row.get('緯度', 0)
-                longitude = row.get('經度', 0)
-                if pd.isna(latitude):
-                    latitude = 0
-                if pd.isna(longitude):
-                    longitude = 0
-                latitude = float(latitude)
-                longitude = float(longitude)
+                # 座標處理：支援兩種格式
+                # 1. 新格式：獨立的「緯度」和「經度」欄位
+                # 2. 原始格式：「座標」欄位（度分秒格式）
+                latitude = 0
+                longitude = 0
                 
+                if '緯度' in df.columns and '經度' in df.columns:
+                    # 新格式
+                    lat_val = row.get('緯度', 0)
+                    lng_val = row.get('經度', 0)
+                    if not pd.isna(lat_val) and not pd.isna(lng_val):
+                        latitude = float(lat_val)
+                        longitude = float(lng_val)
+                
+                if latitude == 0 and longitude == 0 and '座標' in df.columns:
+                    # 原始格式：度分秒
+                    coord_str = row.get('座標', '')
+                    if not pd.isna(coord_str):
+                        latitude, longitude = parse_dms_coordinate(str(coord_str))
+                
+                # 週次（支援「週次」和「年週」兩種欄位名）
                 week_id = row.get('週次', row.get('年週', ''))
                 if pd.isna(week_id) or not week_id:
                     week_id = filename_week if filename_week else get_week_id()
                 week_id = str(week_id)
                 if week_id.endswith('.0'):
                     week_id = week_id[:-2]
+                # 確保週次是4位數字
+                if len(week_id) == 4 and week_id.isdigit():
+                    pass  # 格式正確
+                else:
+                    week_id = filename_week if filename_week else get_week_id()
                 
+                # 裝修狀態
                 renovation_status = str(row.get('裝修狀態', 'unknown'))
+                if renovation_status == 'nan':
+                    renovation_status = 'unknown'
                 
+                # 跳過無效數據
                 if not address or rent <= 0:
                     continue
                 
+                # 按週次分組
                 if week_id not in week_data:
                     week_data[week_id] = []
                 
@@ -263,16 +407,19 @@ def auto_import_csv_files():
                     'renovation_status': renovation_status
                 })
             
-            print(f"  ✓ 讀取: {csv_filename} ({len(df)} 行)")
+            print(f"  ✓ 讀取完成: {csv_filename} ({len(df)} 行)")
         
         except Exception as e:
             print(f"  ⚠️  {csv_filename} 讀取失敗: {e}")
+            import traceback
+            traceback.print_exc()
             continue
     
     if not week_data:
         print("❌ 沒有成功讀取任何數據")
         return
     
+    # 導入到數據庫
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
@@ -287,6 +434,7 @@ def auto_import_csv_files():
         
         current_week_ids = set()
         
+        # 去重（基於 property_id）
         seen_ids = set()
         unique_properties = []
         for prop in properties:
@@ -333,12 +481,14 @@ def auto_import_csv_files():
                           prop['renovation_status'], first_published_date, week_id))
                     week_new += 1
             except Exception as e:
+                print(f"    ⚠️ 導入失敗 {prop['property_id']}: {e}")
                 continue
         
         print(f"  新增: {week_new} 筆, 更新: {week_updated} 筆")
         total_new += week_new
         total_updated += week_updated
         
+        # 標記本週未出現的房源為 deleted（只對最新週次執行）
         all_weeks = sorted(week_data.keys())
         if week_id == all_weeks[-1] and current_week_ids:
             placeholders = ','.join(['?' for _ in current_week_ids])
@@ -355,9 +505,20 @@ def auto_import_csv_files():
                 print(f"  標記下架: {deleted_count} 筆")
     
     conn.commit()
+    
+    # 統計有座標的房源
+    cursor.execute("SELECT COUNT(*) FROM properties WHERE latitude != 0 AND longitude != 0")
+    with_coords = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM properties")
+    total = cursor.fetchone()[0]
+    
     conn.close()
     
-    print(f"\n✅ CSV 導入完成！總新增: {total_new} 筆, 總更新: {total_updated} 筆")
+    print(f"\n✅ CSV 導入完成！")
+    print(f"  總新增: {total_new} 筆")
+    print(f"  總更新: {total_updated} 筆")
+    print(f"  有座標: {with_coords}/{total} 筆")
+    print(f"  週次版本: {', '.join(sorted(week_data.keys()))}")
 
 # ============ API 端點 ============
 
