@@ -1363,6 +1363,40 @@
 
 
         // 熱力圖影響範圍拉霸條事件監聽
+
+        // 雙指觸摸滾動功能（手機版本）
+        let touchStartY = 0;
+        let touchStartX = 0;
+        let touchCount = 0;
+        
+        document.addEventListener('touchstart', (e) => {
+            touchCount = e.touches.length;
+            if (touchCount === 2) {
+                touchStartY = e.touches[0].clientY;
+                touchStartX = e.touches[0].clientX;
+            }
+        }, false);
+        
+        document.addEventListener('touchmove', (e) => {
+            if (touchCount === 2) {
+                const touchCurrentY = e.touches[0].clientY;
+                const touchCurrentX = e.touches[0].clientX;
+                const deltaY = touchStartY - touchCurrentY;
+                const deltaX = Math.abs(touchStartX - touchCurrentX);
+                
+                // 如果垂直移動大於水平移動，則滾動頁面
+                if (Math.abs(deltaY) > deltaX) {
+                    e.preventDefault();
+                    window.scrollBy(0, deltaY * 0.5);
+                    touchStartY = touchCurrentY;
+                }
+            }
+        }, false);
+        
+        document.addEventListener('touchend', (e) => {
+            touchCount = e.touches.length;
+        }, false);
+        
         document.addEventListener('DOMContentLoaded', () => {
             const radiusSlider = document.getElementById('heatmapRadius');
             if (radiusSlider) {
