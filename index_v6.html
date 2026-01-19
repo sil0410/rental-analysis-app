@@ -998,7 +998,10 @@
                 });
                 
                 marker.addListener('click', () => {
-                    showPropertyPopup(prop);
+                    // 只在進階模式下顯示房源資訊
+                    if (advancedMode) {
+                        showPropertyPopup(prop);
+                    }
                 });
                 
                 markers.push(marker);
