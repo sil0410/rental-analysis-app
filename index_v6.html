@@ -661,7 +661,7 @@
     </div>
     
     <!-- 管理員面板 -->
-    <div class="property-popup" id="adminPanel" style="display: none;">
+    <div class="property-popup" id="adminPanel">
         <div class="popup-header" style="background: #1976d2;">
             <span>⚙️ 管理員面板</span>
             <button class="popup-close" onclick="closeAdminPanel()">×</button>
@@ -1366,13 +1366,18 @@
         
         // 顯示管理員面板
         function showAdminPanel() {
-            document.getElementById('adminPanel').style.display = 'block';
+            const panel = document.getElementById('adminPanel');
+            panel.classList.add('active');
+            panel.style.display = 'block';
+            panel.style.zIndex = '999999';
             loadDatabaseStatus();
         }
         
         // 關閉管理員面板
         function closeAdminPanel() {
-            document.getElementById('adminPanel').style.display = 'none';
+            const panel = document.getElementById('adminPanel');
+            panel.classList.remove('active');
+            panel.style.display = 'none';
         }
         
         // 載入數據庫狀態
