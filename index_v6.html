@@ -1348,12 +1348,27 @@
         async function showAdminMenu() {
             // 先獲取數據庫狀態
             let statusText = '載入中...';
+            let googleDriveStatus = '';
             try {
                 const response = await fetch(`${API_BASE}/admin/database-status`);
                 const data = await response.json();
                 if (data.status === 'success') {
                     const db = data.database;
-                    statusText = `總房源數: ${db.total_properties}\n活躍房源: ${db.active_properties}\n已下架: ${db.deleted_properties}\n版本數: ${db.versions_count}\n版本列表: ${db.versions.map(v => v.week_id).join(', ') || '無'}`;
+                    statusText = `CSV 文件數: ${db.csv_files_count}
+總記錄數: ${db.total_records}
+版本數: ${db.versions_count}
+版本列表: ${db.versions.map(v => v.week_id).join(', ') || '無'}`;
+                    
+                    // Google Drive 狀態
+                    if (data.google_drive && data.google_drive.available) {
+                        googleDriveStatus = '
+
+☁️ Google Drive: 已連接';
+                    } else {
+                        googleDriveStatus = '
+
+☁️ Google Drive: 未連接（使用本地檔案）';
+                    }
                 } else {
                     statusText = '無法載入數據庫狀態';
                 }
@@ -1361,55 +1376,104 @@
                 statusText = `錯誤: ${error.message}`;
             }
             
-            // 顯示數據庫狀態和操作選項
-            const action = confirm(`📊 數據庫狀態:\n\n${statusText}\n\n點擊「確定」清空數據庫\n點擊「取消」關閉`);
+            // 顯示操作選單
+            const choice = prompt(`📊 數據庫狀態:
+
+${statusText}${googleDriveStatus}
+
+請選擇操作：
+1 = 🔄 重新掃描 Google Drive
+2 = 🗑️ 清空數據庫
+0 = 取消
+
+請輸入數字：`);
             
-            if (action) {
-                // 用戶選擇清空數據庫
-                const password = prompt('請輸入管理密碼（預設: 1234）:');
+            if (choice === '1') {
+                // 重新掃描 Google Drive
+                await rescanGoogleDrive();
+            } else if (choice === '2') {
+                // 清空數據庫
+                await resetDatabase();
+            }
+        }
+        
+        // 重新掃描 Google Drive
+        async function rescanGoogleDrive() {
+            const statusDiv = document.getElementById('statusText');
+            statusDiv.textContent = '正在掃描 Google Drive...';
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin/rescan-csv`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
                 
-                if (password === null) {
-                    return; // 用戶取消
+                if (response.ok && data.status === 'success') {
+                    alert('✅ Google Drive 掃描完成！
+
+已更新 CSV 索引，請重新搜尋查看最新數據。');
+                    loadVersions(); // 重新載入版本列表
+                    statusDiv.textContent = '掃描完成';
+                } else {
+                    alert(`❌ 掃描失敗：${data.detail || data.message || '未知錯誤'}`);
+                    statusDiv.textContent = '掃描失敗';
                 }
+            } catch (error) {
+                alert(`❌ 錯誤：${error.message}`);
+                statusDiv.textContent = '掃描錯誤';
+            }
+        }
+        
+        // 清空數據庫
+        async function resetDatabase() {
+            const password = prompt('請輸入管理密碼（預設: 1234）:');
+            
+            if (password === null) {
+                return; // 用戶取消
+            }
+            
+            if (!password) {
+                alert('請輸入密碼');
+                return;
+            }
+            
+            // 再次確認
+            if (!confirm('⚠️ 警告！
+
+此操作將刪除所有房源數據，無法復原！
+
+確定要繼續嗎？')) {
+                return;
+            }
+            
+            // 執行清空
+            try {
+                const response = await fetch(`${API_BASE}/admin/reset-database`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        password: password,
+                        confirm: true
+                    })
+                });
                 
-                if (!password) {
-                    alert('請輸入密碼');
-                    return;
-                }
+                const data = await response.json();
                 
-                // 再次確認
-                if (!confirm('⚠️ 警告！\n\n此操作將刪除所有房源數據，無法復原！\n\n確定要繼續嗎？')) {
-                    return;
+                if (response.ok && data.status === 'success') {
+                    alert(`✅ 數據庫已清空！
+
+${data.message || '操作成功'}`);
+                    loadVersions(); // 重新載入版本列表
+                } else {
+                    alert(`❌ 清空失敗：${data.detail || '未知錯誤'}`);
                 }
-                
-                // 執行清空
-                try {
-                    const response = await fetch(`${API_BASE}/admin/reset-database`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            password: password,
-                            confirm: true
-                        })
-                    });
-                    
-                    const data = await response.json();
-                    
-                    if (response.ok && data.status === 'success') {
-                        alert(`✅ 數據庫已清空！\n\n刪除了 ${data.deleted.properties} 筆房源數據\n刪除了 ${data.deleted.versions} 個版本`);
-                        loadVersions(); // 重新載入版本列表
-                    } else {
-                        alert(`❌ 清空失敗：${data.detail || '未知錯誤'}`);
-                    }
-                } catch (error) {
-                    alert(`❌ 錯誤：${error.message}`);
-                }
+            } catch (error) {
+                alert(`❌ 錯誤：${error.message}`);
             }
         }
 
-        
         // 版本控制
         function previousVersion() {
             if (currentVersionIndex > 0) {
