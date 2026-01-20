@@ -50,61 +50,33 @@
             opacity: 0.9;
         }
         
-        /* 進階模式開關 */
-        .advanced-toggle {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 13px;
-        }
-        
-        .toggle-switch {
-            position: relative;
-            width: 50px;
-            height: 24px;
-            background: rgba(255,255,255,0.3);
-            border-radius: 12px;
+        .btn-admin {
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.4);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 4px;
             cursor: pointer;
-            transition: background 0.3s;
+            font-size: 13px;
+            transition: all 0.2s;
         }
         
-        .toggle-switch.active {
-            background: #4caf50;
+        .btn-admin:hover {
+            background: rgba(255,255,255,0.3);
         }
         
-        .toggle-switch::after {
-            content: '';
-            position: absolute;
-            width: 20px;
-            height: 20px;
-            background: white;
-            border-radius: 50%;
-            top: 2px;
-            left: 2px;
-            transition: left 0.3s;
-        }
-        
-        .toggle-switch.active::after {
-            left: 28px;
-        }
-        
-        /* 搜索欄 */
+        /* 搜尋欄 */
         .search-bar {
             background: white;
-            padding: 12px 10px;
+            padding: 15px 20px;
             display: flex;
-            gap: 10px;
-            align-items: center;
             flex-wrap: wrap;
-            border-bottom: 1px solid #e0e0e0;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        
-        @media (max-width: 768px) {
-            .search-bar {
-                padding: 10px 8px;
-                gap: 8px;
-            }
+            gap: 15px;
+            align-items: center;
+            border-bottom: 1px solid #ddd;
+            position: sticky;
+            top: 0;
+            z-index: 100;
         }
         
         .search-group {
@@ -114,170 +86,98 @@
         }
         
         .search-group label {
-            font-weight: 600;
             font-size: 14px;
-            white-space: nowrap;
+            font-weight: 600;
+            color: #555;
         }
         
-        @media (max-width: 768px) {
-            .search-group label {
-                font-size: 12px;
-            }
-        }
-        
-        .search-group input,
-        .search-group select {
+        .search-bar select, .search-bar input {
             padding: 8px 12px;
-            border: 1px solid #ddd;
+            border: 1px solid #ccc;
             border-radius: 4px;
             font-size: 14px;
-            font-family: inherit;
-            min-width: 60px;
-        }
-        
-        @media (max-width: 768px) {
-            .search-group input,
-            .search-group select {
-                padding: 6px 8px;
-                font-size: 13px;
-                min-width: 50px;
-                max-width: 100px;
-            }
-        }
-        
-        .search-group input:focus,
-        .search-group select:focus {
             outline: none;
-            border-color: #2e7d32;
-            box-shadow: 0 0 0 2px rgba(46, 125, 50, 0.1);
+        }
+        
+        .search-bar select:focus, .search-bar input:focus {
+            border-color: #43a047;
         }
         
         .btn-search {
             background: #2e7d32;
             color: white;
-            padding: 8px 20px;
             border: none;
+            padding: 8px 20px;
             border-radius: 4px;
             cursor: pointer;
             font-weight: 600;
-            transition: background 0.3s;
-            font-size: 14px;
-        }
-        
-        @media (max-width: 768px) {
-            .btn-search {
-                padding: 6px 12px;
-                font-size: 12px;
-            }
+            transition: background 0.2s;
         }
         
         .btn-search:hover {
             background: #1b5e20;
         }
         
-        /* 熱力圖模式按鈕 */
-        .btn-heatmap {
-            flex: 1;
-            padding: 8px 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            background: white;
-            cursor: pointer;
-            font-weight: 600;
-            font-size: 13px;
-            transition: all 0.3s;
-        }
-        
-        .btn-heatmap:hover {
-            border-color: #2e7d32;
-            background: #f0f0f0;
-        }
-        
-        .btn-heatmap.active {
-            background: #2e7d32;
-            color: white;
-            border-color: #2e7d32;
-        }
-        
         /* 控制欄 */
         .control-bar {
-            background: white;
-            padding: 12px 20px;
+            background: #fff;
+            padding: 10px 20px;
             display: flex;
-            gap: 10px;
             align-items: center;
-            border-bottom: 1px solid #e0e0e0;
+            gap: 15px;
+            border-bottom: 1px solid #eee;
         }
         
         .btn-control {
-            background: #f0f0f0;
+            padding: 6px 12px;
             border: 1px solid #ddd;
-            padding: 8px 15px;
+            background: white;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 14px;
-            transition: background 0.3s;
+            font-size: 13px;
         }
         
         .btn-control:hover {
-            background: #e0e0e0;
+            background: #f9f9f9;
         }
         
         /* 主容器 */
         .main-container {
             display: flex;
-            height: calc(100vh - 140px);
-            gap: 0;
+            height: calc(100vh - 160px);
         }
         
-        /* 地圖容器 */
         #map {
             flex: 1;
-            background: #e0e0e0;
-            position: relative;
+            height: 100%;
         }
         
-/* 右侧面板 */
         .right-panel {
             width: 350px;
             background: white;
-            border-left: 1px solid #e0e0e0;
+            border-left: 1px solid #ddd;
             overflow-y: auto;
             padding: 20px;
+            display: none; /* 預設隱藏，進階模式顯示 */
         }
         
         .panel-section {
             margin-bottom: 25px;
-            border: 1px dashed #ddd;
-            padding: 15px;
-            border-radius: 4px;
         }
         
         .panel-section h3 {
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 12px;
-            color: #333;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .panel-section h3::before {
-            content: '📊';
             font-size: 16px;
+            margin-bottom: 15px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #43a047;
+            color: #333;
         }
         
         .stat-row {
             display: flex;
             justify-content: space-between;
-            padding: 8px 0;
-            font-size: 13px;
-            border-bottom: 1px solid #f0f0f0;
-        }
-        
-        .stat-row:last-child {
-            border-bottom: none;
+            margin-bottom: 10px;
+            font-size: 14px;
         }
         
         .stat-label {
@@ -286,29 +186,26 @@
         
         .stat-value {
             font-weight: 600;
-            color: #2e7d32;
+            color: #333;
         }
         
         .chart-container {
-            position: relative;
             height: 200px;
             margin-top: 10px;
         }
         
         /* 房源詳情彈窗 */
         .property-popup {
-            display: none;
             position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+            bottom: 20px;
+            right: 370px;
+            width: 300px;
             background: white;
             border-radius: 8px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-            z-index: 99999;
-            max-width: 400px;
-            max-height: 500px;
-            overflow-y: auto;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            z-index: 1000;
+            display: none;
+            overflow: hidden;
         }
         
         .property-popup.active {
@@ -316,147 +213,124 @@
         }
         
         .popup-header {
-            background: #2e7d32;
+            background: #43a047;
             color: white;
-            padding: 15px;
+            padding: 10px 15px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-radius: 8px 8px 0 0;
         }
         
         .popup-close {
             background: none;
             border: none;
             color: white;
-            font-size: 24px;
+            font-size: 20px;
             cursor: pointer;
         }
         
         .popup-content {
-            padding: 20px;
+            padding: 15px;
         }
         
         .popup-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 10px 0;
-            border-bottom: 1px solid #f0f0f0;
-            font-size: 14px;
-        }
-        
-        .popup-row:last-child {
-            border-bottom: none;
+            margin-bottom: 8px;
+            font-size: 13px;
         }
         
         .popup-label {
             color: #666;
-            font-weight: 600;
+            width: 70px;
+            display: inline-block;
         }
         
         .popup-value {
             color: #333;
-            text-align: right;
+            font-weight: 500;
         }
         
-        .popup-value.highlight {
-            color: #2e7d32;
+        /* 進階模式開關 */
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 40px;
+            height: 20px;
+            background: #ccc;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background: white;
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: left 0.3s;
+        }
+        
+        .toggle-switch.active {
+            background: #43a047;
+        }
+        
+        .toggle-switch.active::after {
+            left: 22px;
+        }
+        
+        /* 熱力圖圖例 */
+        .heatmap-legend {
+            position: absolute;
+            bottom: 30px;
+            left: 20px;
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 50;
+            font-size: 12px;
+        }
+        
+        .legend-title {
             font-weight: 600;
+            margin-bottom: 5px;
+            text-align: center;
         }
         
-        /* 響應式設計 */
-        /* 進階模式控制 */
-        #advancedHeatmapControls {
+        .legend-items {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        
+        .legend-item {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
         }
         
-        #advancedHeatmapControls input[type="range"] {
-            flex: 1;
-            min-width: 100px;
+        .legend-color {
+            width: 15px;
+            height: 10px;
+            border-radius: 2px;
         }
         
-        @media (max-width: 1024px) {
-            .right-panel {
-                width: 300px;
-            }
+        .btn-heatmap {
+            background: #fff;
+            border: 1px solid #ddd;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
         }
         
-        @media (max-width: 768px) {
-            .main-container {
-                flex-direction: column;
-            }
-            
-            .right-panel {
-                width: 100%;
-                height: 300px;
-                border-left: none;
-                border-top: 1px solid #e0e0e0;
-                padding: 12px;
-            }
-            
-            #map {
-                height: calc(100vh - 440px);
-            }
-            
-            .navbar h1 {
-                font-size: 16px;
-            }
-            
-            .navbar-status {
-                font-size: 11px;
-            }
-            
-            .advanced-toggle {
-                font-size: 11px;
-                gap: 5px;
-            }
-            
-            .toggle-switch {
-                width: 40px;
-                height: 20px;
-            }
-            
-            .toggle-switch::after {
-                width: 16px;
-                height: 16px;
-                top: 2px;
-                left: 2px;
-            }
-            
-            .toggle-switch.active::after {
-                left: 22px;
-            }
-            
-            #advancedHeatmapControls {
-                flex-direction: column;
-                align-items: stretch;
-            }
-            
-            #advancedHeatmapControls input[type="range"] {
-                width: 100%;
-                min-width: unset;
-            }
-            
-            .panel-section {
-                margin-bottom: 15px;
-                padding: 10px;
-            }
-            
-            .panel-section h3 {
-                font-size: 12px;
-                margin-bottom: 8px;
-            }
-            
-            .stat-row {
-                font-size: 12px;
-                padding: 6px 0;
-            }
-            
-            .chart-container {
-                height: 150px;
-            }
+        .btn-heatmap.active {
+            background: #2e7d32;
+            color: white;
+            border-color: #2e7d32;
         }
     </style>
 </head>
@@ -465,16 +339,16 @@
     <div class="navbar">
         <h1>🏠 租屋行情分析 - Google Maps 版 v6.0</h1>
         <div class="navbar-right">
-            <div class="navbar-status" id="statusText">載入中...</div>
-            <button id="adminBtn" onclick="showAdminMenu()" style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.5); color: white; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 12px;">⚙️ 管理</button>
-            <div class="advanced-toggle">
-                <span>進階模式</span>
+            <span id="statusText" class="navbar-status">載入中...</span>
+            <button class="btn-admin" id="adminBtn" onclick="showAdminMenu()">⚙️ 管理</button>
+            <div class="search-group">
+                <span style="font-size: 13px;">進階模式</span>
                 <div class="toggle-switch" id="advancedToggle" onclick="showPasswordPrompt()"></div>
             </div>
         </div>
     </div>
     
-    <!-- 搜索欄 -->
+    <!-- 搜尋欄 -->
     <div class="search-bar">
         <div class="search-group">
             <label for="citySelect">📍 縣市</label>
@@ -496,7 +370,7 @@
         
         <div class="search-group">
             <label for="address">詳細地址</label>
-            <input type="text" id="address" placeholder="例如：永和路76號" value="">
+            <input type="text" id="address" placeholder="例如：永和路76號">
         </div>
         
         <div class="search-group">
@@ -644,22 +518,7 @@
         <div class="popup-content" id="popupContent">
             <!-- 動態生成 -->
         </div>
-    <!-- 密碼輸入彈窗 -->
-    <div class="property-popup" id="passwordPopup">
-        <div class="popup-header">
-            <span id="popupTitle">進階模式驗證</span>
-            <button class="popup-close" onclick="closePasswordPopup()">×</button>
-        </div>
-        <div class="popup-content" style="text-align: center; padding: 30px;">
-            <p style="margin-bottom: 20px; font-size: 16px; color: #333;">請輸入 4 位數字密碼</p>
-            <input type="password" id="passwordInput" placeholder="輸入密碼" maxlength="4" style="font-size: 20px; padding: 10px; width: 150px; text-align: center; letter-spacing: 5px; border: 2px solid #ddd; border-radius: 5px;" onkeypress="handlePasswordKeyPress(event)">
-            <div style="margin-top: 20px;">
-                <button onclick="verifyPassword()" style="padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; margin-right: 10px;">確認</button>
-                <button onclick="closePasswordPopup()" style="padding: 10px 20px; background-color: #f44336; color: white; border: none; border-radius: 5px; cursor: pointer;">取消</button>
-            </div>
-        </div>
     </div>
-    
     
     <script>
         // 配置
@@ -848,55 +707,35 @@
                     // 清除舊的查詢位置圖釘和圓圈
                     if (queryLocationMarker) {
                         queryLocationMarker.setMap(null);
-                        queryLocationMarker = null;
                     }
                     if (searchRadiusCircle) {
-                        if (searchRadiusCircle.remove) {
-                            searchRadiusCircle.remove();
-                        } else if (searchRadiusCircle.setMap) {
-                            searchRadiusCircle.setMap(null);
-                        }
-                        searchRadiusCircle = null;
+                        searchRadiusCircle.remove();
                     }
                     
-                    // 清除房源標記和熱力圖
-                    clearMarkers();
-                    
-                    // 添加新的紅色圖釘標記查詢位置 - 放大 2 倍
+                    // 添加新的查詢位置圖釘
                     queryLocationMarker = new google.maps.Marker({
                         position: { lat, lng },
                         map: map,
-                        title: '查詢位置',
-                        icon: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png',
-                        scale: 2
+                        title: '搜尋中心',
+                        icon: 'https://maps.google.com/mapfiles/ms/icons/red-pushpin.png'
                     });
                     
-                    // 添加虛線圓圈表示搜尋範圍（使用 SVG 覆蓋層）
+                    // 創建搜尋範圍圓圈 (使用 SVG 覆蓋層以獲得更好的效能)
                     function createSearchRadiusCircle(centerLat, centerLng, radiusMeters) {
-                        // 移除舊的 SVG
-                        const oldSvg = document.getElementById('searchRadiusSvg');
-                        if (oldSvg) oldSvg.remove();
-                        
-                        // 創建 SVG 元素
                         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-                        svg.id = 'searchRadiusSvg';
                         svg.style.position = 'absolute';
                         svg.style.top = '0';
                         svg.style.left = '0';
                         svg.style.width = '100%';
                         svg.style.height = '100%';
                         svg.style.pointerEvents = 'none';
-                        svg.style.zIndex = '1000';
+                        svg.style.zIndex = '1';
                         
-                        // 創建圓圈元素
                         const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-                        circle.id = 'searchRadiusCircleElement';
-                        circle.setAttribute('fill', 'none');
-                        circle.setAttribute('stroke', '#FF0000');
-                        circle.setAttribute('stroke-width', '3');
-                        circle.setAttribute('stroke-dasharray', '10,5');
-                        circle.setAttribute('stroke-opacity', '0.8');
-                        
+                        circle.setAttribute('fill', 'rgba(67, 160, 71, 0.1)');
+                        circle.setAttribute('stroke', '#43a047');
+                        circle.setAttribute('stroke-width', '2');
+                        circle.setAttribute('stroke-dasharray', '5,5');
                         svg.appendChild(circle);
                         
                         // 添加到地圖容器
@@ -1022,7 +861,6 @@
             // 添加熱力圖
             if (heatmapData.length > 0) {
                 updateHeatmap(data);
-
             }
             
             // 更新圖表
@@ -1039,8 +877,6 @@
                 color = '#999999';
             } else if (prop.status === 'active') {
                 // 根據上榜時間決定紅色深度
-                // currentVersionIndex 是當前選中的版本索引
-                // uploadWeek 是房源上榜的週次
                 const currentWeek = parseInt(versions[currentVersionIndex]?.week_id) || 2602;
                 const uploadWeek = parseInt(prop.upload_week) || currentWeek;
                 const weeksDiff = currentWeek - uploadWeek;
@@ -1052,8 +888,7 @@
                     // 經過 49 週以上：紅黑色（最深）
                     color = '#1a0000';
                 } else {
-                    // 中間漸變：從紅色到紅黑色
-                    // 50 級漸變
+                    // 中間漸變
                     const colors = [
                         '#FF0000', '#FF0A0A', '#FF1414', '#FF1E1E', '#FF2828',
                         '#FF3232', '#FF3C3C', '#FF4646', '#FF5050', '#FF5A5A',
@@ -1069,11 +904,9 @@
                     color = colors[Math.min(weeksDiff, 49)];
                 }
             } else {
-                // 其他狀態：紅色
                 color = '#FF0000';
             }
             
-            // 創建 SVG 圓點標記
             const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12">
                 <circle cx="6" cy="6" r="5" fill="${color}" stroke="white" stroke-width="1"/>
             </svg>`;
@@ -1085,29 +918,10 @@
             };
         }
         
-        // 清除標記 - 不清除查詢位置標記
+        // 清除標記
         function clearMarkers() {
             markers.forEach(marker => marker.setMap(null));
             markers = [];
-            // 不清除 queryLocationMarker，保持紅色圖釘不消失
-            if (heatmapLayer) {
-                heatmapLayer.setMap(null);
-                heatmapLayer = null;
-            }
-        }
-        
-        // 清除所有標記包括查詢位置
-        function clearAllMarkers() {
-            markers.forEach(marker => marker.setMap(null));
-            markers = [];
-            if (queryLocationMarker) {
-                queryLocationMarker.setMap(null);
-                queryLocationMarker = null;
-            }
-            if (searchRadiusCircle) {
-                searchRadiusCircle.setMap(null);
-                searchRadiusCircle = null;
-            }
             if (heatmapLayer) {
                 heatmapLayer.setMap(null);
                 heatmapLayer = null;
@@ -1117,36 +931,37 @@
         // 顯示房源詳情
         function showPropertyPopup(prop) {
             const popup = document.getElementById('propertyPopup');
-            const title = document.getElementById('popupTitle');
             const content = document.getElementById('popupContent');
             
-            title.textContent = prop.title;
-            
             let html = `
+                <div class="popup-row">
+                    <span class="popup-label">標題</span>
+                    <span class="popup-value">${prop.title}</span>
+                </div>
                 <div class="popup-row">
                     <span class="popup-label">地址</span>
                     <span class="popup-value">${prop.address}</span>
                 </div>
                 <div class="popup-row">
                     <span class="popup-label">租金</span>
-                    <span class="popup-value highlight">$${prop.rent_monthly.toLocaleString()}</span>
+                    <span class="popup-value">$${prop.rent_monthly.toLocaleString()}</span>
                 </div>
                 <div class="popup-row">
                     <span class="popup-label">坪數</span>
                     <span class="popup-value">${prop.area} 坪</span>
                 </div>
-                <div class="popup-row">
-                    <span class="popup-label">房型</span>
-                    <span class="popup-value">${prop.room_type}</span>
-                </div>
-                <div class="popup-row">
-                    <span class="popup-label">距離</span>
-                    <span class="popup-value">${Math.round(prop.distance)} 公尺</span>
-                </div>
             `;
             
-            // 進階模式顯示樓層
-            if (advancedMode && prop.floor) {
+            if (prop.room_type) {
+                html += `
+                    <div class="popup-row">
+                        <span class="popup-label">房型</span>
+                        <span class="popup-value">${prop.room_type}</span>
+                    </div>
+                `;
+            }
+            
+            if (prop.floor) {
                 html += `
                     <div class="popup-row">
                         <span class="popup-label">樓層</span>
@@ -1177,7 +992,6 @@
         
         // 更新圖表
         function updateCharts(data) {
-            // 房型分佈
             const roomTypes = {};
             data.properties.forEach(prop => {
                 roomTypes[prop.room_type] = (roomTypes[prop.room_type] || 0) + 1;
@@ -1203,7 +1017,6 @@
                 }
             });
             
-            // 租金分析
             const rentRanges = { '<15k': 0, '15-25k': 0, '25-35k': 0, '>35k': 0 };
             data.properties.forEach(prop => {
                 if (prop.rent_monthly < 15000) rentRanges['<15k']++;
@@ -1241,7 +1054,6 @@
                 heatmapLayer.setMap(null);
             }
             
-            // 根據進階模式設定半徑
             const radius = advancedMode ? heatmapRadius : (heatmapMode === 'rent' ? 50 : 80);
             
             if (heatmapMode === 'rent') {
@@ -1273,69 +1085,38 @@
         // 設置熱力圖模式
         function setHeatmapMode(mode) {
             heatmapMode = mode;
-            // 只有房源密度模式
             document.getElementById('heatmapDensity').classList.toggle('active', mode === 'density');
             if (currentData) {
                 updateHeatmap(currentData);
             }
         }
         
-        
         // 密碼驗證相關變量
-        const ADVANCED_PASSWORD = "1234"; // 預設密碼
+        const ADVANCED_PASSWORD = "1234"; 
         
-        // 顯示密碼輸入彈窗（使用原生 prompt 對話框）
         function showPasswordPrompt() {
-            // 如果已經在進階模式，直接關閉
             if (advancedMode) {
                 toggleAdvancedMode();
                 return;
             }
             
-            // 使用原生 prompt 對話框
             const password = prompt('請輸入 4 位數字密碼以進入進階模式:');
-            
-            if (password === null) {
-                // 用戶點擊了取消
-                return;
-            }
-            
             if (password === ADVANCED_PASSWORD) {
-                // 密碼正確，進入進階模式
                 toggleAdvancedMode();
-            } else {
-                // 密碼錯誤
+            } else if (password !== null) {
                 alert('密碼錯誤，請重試');
             }
         }
         
-        // 關閉密碼輸入彈窗（保留但不再使用）
-        function closePasswordPopup() {
-            // 不再需要
-        }
-        
-        // 處理密碼輸入的回車鍵（保留但不再使用）
-        function handlePasswordKeyPress(event) {
-            // 不再需要
-        }
-        
-        // 驗證密碼（保留但不再使用）
-        function verifyPassword() {
-            // 不再需要
-        }
-        
-        // 進階模式開關（原有函數，保持不變）
         function toggleAdvancedMode() {
             advancedMode = !advancedMode;
             document.getElementById('advancedToggle').classList.toggle('active');
             
-            // 顯示/隱藏進階模式控制面板
             const advancedControls = document.getElementById('advancedHeatmapControls');
             if (advancedControls) {
                 advancedControls.style.display = advancedMode ? 'block' : 'none';
             }
             
-            // 顯示/隱藏右側面板中的案件資訊
             const rightPanel = document.querySelector('.right-panel');
             if (rightPanel) {
                 rightPanel.style.display = advancedMode ? 'block' : 'none';
@@ -1344,9 +1125,7 @@
         
         // ============ 管理員功能 ============
         
-        // 顯示管理員選單
         async function showAdminMenu() {
-            // 先獲取數據庫狀態
             let statusText = '載入中...';
             let googleDriveStatus = '';
             try {
@@ -1354,20 +1133,12 @@
                 const data = await response.json();
                 if (data.status === 'success') {
                     const db = data.database;
-                    statusText = `CSV 文件數: ${db.csv_files_count}
-總記錄數: ${db.total_records}
-版本數: ${db.versions_count}
-版本列表: ${db.versions.map(v => v.week_id).join(', ') || '無'}`;
+                    statusText = `CSV 文件數: ${db.csv_files_count}\n總記錄數: ${db.total_records}\n版本數: ${db.versions_count}\n版本列表: ${db.versions.map(v => v.week_id).join(', ') || '無'}`;
                     
-                    // Google Drive 狀態
                     if (data.google_drive && data.google_drive.available) {
-                        googleDriveStatus = '
-
-☁️ Google Drive: 已連接';
+                        googleDriveStatus = '\n\n☁️ Google Drive: 已連接';
                     } else {
-                        googleDriveStatus = '
-
-☁️ Google Drive: 未連接（使用本地檔案）';
+                        googleDriveStatus = '\n\n☁️ Google Drive: 未連接（使用本地檔案）';
                     }
                 } else {
                     statusText = '無法載入數據庫狀態';
@@ -1376,28 +1147,15 @@
                 statusText = `錯誤: ${error.message}`;
             }
             
-            // 顯示操作選單
-            const choice = prompt(`📊 數據庫狀態:
-
-${statusText}${googleDriveStatus}
-
-請選擇操作：
-1 = 🔄 重新掃描 Google Drive
-2 = 🗑️ 清空數據庫
-0 = 取消
-
-請輸入數字：`);
+            const choice = prompt(`📊 數據庫狀態:\n\n${statusText}${googleDriveStatus}\n\n請選擇操作：\n1 = 🔄 重新掃描 Google Drive\n2 = 🗑️ 清空數據庫\n0 = 取消\n\n請輸入數字：`);
             
             if (choice === '1') {
-                // 重新掃描 Google Drive
                 await rescanGoogleDrive();
             } else if (choice === '2') {
-                // 清空數據庫
                 await resetDatabase();
             }
         }
         
-        // 重新掃描 Google Drive
         async function rescanGoogleDrive() {
             const statusDiv = document.getElementById('statusText');
             statusDiv.textContent = '正在掃描 Google Drive...';
@@ -1409,10 +1167,8 @@ ${statusText}${googleDriveStatus}
                 const data = await response.json();
                 
                 if (response.ok && data.status === 'success') {
-                    alert('✅ Google Drive 掃描完成！
-
-已更新 CSV 索引，請重新搜尋查看最新數據。');
-                    loadVersions(); // 重新載入版本列表
+                    alert('✅ Google Drive 掃描完成！\n\n已更新 CSV 索引，請重新搜尋查看最新數據。');
+                    loadVersions(); 
                     statusDiv.textContent = '掃描完成';
                 } else {
                     alert(`❌ 掃描失敗：${data.detail || data.message || '未知錯誤'}`);
@@ -1424,61 +1180,61 @@ ${statusText}${googleDriveStatus}
             }
         }
         
-        // 清空數據庫
         async function resetDatabase() {
             const password = prompt('請輸入管理密碼（預設: 1234）:');
-            
-            if (password === null) {
-                return; // 用戶取消
-            }
-            
-            if (!password) {
-                alert('請輸入密碼');
+            if (password === null) return;
+            if (password !== '1234') {
+                alert('密碼錯誤');
                 return;
             }
             
-            // 再次確認
-            if (!confirm('⚠️ 警告！
-
-此操作將刪除所有房源數據，無法復原！
-
-確定要繼續嗎？')) {
+            if (!confirm('⚠️ 警告！\n\n此操作將刪除所有房源數據，無法復原！\n\n確定要繼續嗎？')) {
                 return;
             }
             
-            // 執行清空
             try {
                 const response = await fetch(`${API_BASE}/admin/reset-database`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        password: password,
-                        confirm: true
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: password })
                 });
-                
                 const data = await response.json();
-                
-                if (response.ok && data.status === 'success') {
-                    alert(`✅ 數據庫已清空！
-
-${data.message || '操作成功'}`);
-                    loadVersions(); // 重新載入版本列表
+                if (data.status === 'success') {
+                    alert('✅ 數據庫已清空');
+                    location.reload();
                 } else {
-                    alert(`❌ 清空失敗：${data.detail || '未知錯誤'}`);
+                    alert('❌ 清空失敗: ' + data.message);
                 }
             } catch (error) {
-                alert(`❌ 錯誤：${error.message}`);
+                alert('❌ 錯誤: ' + error.message);
             }
         }
-
-        // 版本控制
+        
+        // 播放動畫
+        function toggleAnimation() {
+            animationRunning = !animationRunning;
+            const btn = document.getElementById('playBtn');
+            btn.textContent = animationRunning ? '⏸️ 暫停' : '▶️ 播放';
+            if (animationRunning) playNext();
+        }
+        
+        async function playNext() {
+            if (!animationRunning) return;
+            if (currentVersionIndex < versions.length - 1) {
+                currentVersionIndex++;
+                updateVersionSelector();
+                await onVersionChange();
+                setTimeout(playNext, 2000);
+            } else {
+                animationRunning = false;
+                document.getElementById('playBtn').textContent = '▶️ 播放';
+            }
+        }
+        
         function previousVersion() {
             if (currentVersionIndex > 0) {
                 currentVersionIndex--;
-                document.getElementById('versionSelect').value = currentVersionIndex;
+                updateVersionSelector();
                 onVersionChange();
             }
         }
@@ -1486,79 +1242,10 @@ ${data.message || '操作成功'}`);
         function nextVersion() {
             if (currentVersionIndex < versions.length - 1) {
                 currentVersionIndex++;
-                document.getElementById('versionSelect').value = currentVersionIndex;
+                updateVersionSelector();
                 onVersionChange();
             }
         }
-        
-        function toggleAnimation() {
-            animationRunning = !animationRunning;
-            if (animationRunning) {
-                playAnimation();
-            }
-        }
-        
-        async function playAnimation() {
-            while (animationRunning && currentVersionIndex < versions.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                nextVersion();
-            }
-            animationRunning = false;
-        }
-
-
-
-        // 熱力圖影響範圍拉霸條事件監聽
-
-        // 雙指觸摸滾動功能（手機版本）
-        let touchStartY = 0;
-        let touchStartX = 0;
-        let touchCount = 0;
-        
-        document.addEventListener('touchstart', (e) => {
-            touchCount = e.touches.length;
-            if (touchCount === 2) {
-                touchStartY = e.touches[0].clientY;
-                touchStartX = e.touches[0].clientX;
-            }
-        }, false);
-        
-        document.addEventListener('touchmove', (e) => {
-            if (touchCount === 2) {
-                const touchCurrentY = e.touches[0].clientY;
-                const touchCurrentX = e.touches[0].clientX;
-                const deltaY = touchStartY - touchCurrentY;
-                const deltaX = Math.abs(touchStartX - touchCurrentX);
-                
-                // 如果垂直移動大於水平移動，則滾動頁面
-                if (Math.abs(deltaY) > deltaX) {
-                    e.preventDefault();
-                    window.scrollBy(0, deltaY * 0.5);
-                    touchStartY = touchCurrentY;
-                }
-            }
-        }, false);
-        
-        document.addEventListener('touchend', (e) => {
-            touchCount = e.touches.length;
-        }, false);
-        
-        document.addEventListener('DOMContentLoaded', () => {
-            const radiusSlider = document.getElementById('heatmapRadius');
-            if (radiusSlider) {
-                radiusSlider.addEventListener('input', (e) => {
-                    heatmapRadius = parseInt(e.target.value);
-                    document.getElementById('radiusValue').textContent = heatmapRadius + 'm';
-                    if (currentData) {
-                        updateHeatmap(currentData);
-                    }
-                });
-            }
-        });
-    </script>
-
-
-
     </script>
 </body>
 </html>
