@@ -7,3 +7,7 @@ pydantic
 requests
 pandas
 python-multipart
+
+# Google Drive API
+google-auth
+google-api-python-client

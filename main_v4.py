@@ -1,6 +1,7 @@
 """
-租屋行情分析系統 - 版本控制 API v6.0
+租屋行情分析系統 - 版本控制 API v7.0
 支持四象限分類（建物類型 x 房型大類）按需載入 CSV
+支持 Google Drive 分層資料夾管理
 優化效能：只載入指定篩選條件的數據
 """
 
@@ -16,9 +17,10 @@ from pydantic import BaseModel
 from typing import List, Optional
 import math
 import pandas as pd
+from io import BytesIO
 
 # 初始化 FastAPI
-app = FastAPI(title="租屋行情分析 API v6.0")
+app = FastAPI(title="租屋行情分析 API v7.0")
 
 # 添加 CORS 中間件
 app.add_middleware(
@@ -34,6 +36,149 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "rental.db")
 
 # Upload 資料夾路徑
 UPLOAD_DIR = None
+
+# ============ Google Drive 配置 ============
+GOOGLE_DRIVE_FOLDER_NAME = "租屋數據"
+drive_service = None
+drive_folder_id = None
+drive_available = False
+
+def init_google_drive():
+    """初始化 Google Drive API（可選功能）"""
+    global drive_service, drive_folder_id, drive_available
+    
+    try:
+        # 從環境變數讀取 Google Drive 金鑰
+        key_json_str = os.getenv('GOOGLE_DRIVE_KEY_JSON')
+        
+        if not key_json_str:
+            print("ℹ️ Google Drive 未配置（環境變數 GOOGLE_DRIVE_KEY_JSON 未設定）")
+            print("   系統將使用本地 upload 資料夾")
+            return False
+        
+        # 延遲導入 Google Drive 相關模組
+        try:
+            from google.oauth2.service_account import Credentials
+            from googleapiclient.discovery import build
+        except ImportError:
+            print("⚠️ Google Drive API 模組未安裝")
+            print("   請執行: pip install google-auth google-api-python-client")
+            return False
+        
+        # 解析 JSON 金鑰
+        try:
+            key_dict = json.loads(key_json_str)
+        except json.JSONDecodeError as e:
+            print(f"⚠️ 無法解析 Google Drive 金鑰 JSON：{e}")
+            return False
+        
+        # 建立認證
+        credentials = Credentials.from_service_account_info(
+            key_dict,
+            scopes=['https://www.googleapis.com/auth/drive']
+        )
+        
+        drive_service = build('drive', 'v3', credentials=credentials)
+        
+        # 查找「租屋數據」資料夾
+        results = drive_service.files().list(
+            q=f"name='{GOOGLE_DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false",
+            spaces='drive',
+            fields='files(id, name)',
+            pageSize=1
+        ).execute()
+        
+        files = results.get('files', [])
+        if files:
+            drive_folder_id = files[0]['id']
+            drive_available = True
+            print(f"✓ Google Drive 連接成功")
+            print(f"  - 資料夾: {GOOGLE_DRIVE_FOLDER_NAME}")
+            print(f"  - ID: {drive_folder_id}")
+            return True
+        else:
+            print(f"⚠️ 找不到 Google Drive 中的「{GOOGLE_DRIVE_FOLDER_NAME}」資料夾")
+            return False
+            
+    except Exception as e:
+        print(f"⚠️ Google Drive 初始化失敗：{e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def get_csv_from_drive(city: str, district: str, building_type: str, property_category: str, week_id: str) -> Optional[pd.DataFrame]:
+    """從 Google Drive 讀取指定的 CSV 文件"""
+    if not drive_available or not drive_service or not drive_folder_id:
+        return None
+    
+    try:
+        from googleapiclient.http import MediaIoBaseDownload
+        
+        # 構建文件名
+        filename = f"{building_type}_{property_category}_{week_id}.csv"
+        
+        # 查找城市資料夾
+        city_results = drive_service.files().list(
+            q=f"name='{city}' and mimeType='application/vnd.google-apps.folder' and '{drive_folder_id}' in parents and trashed=false",
+            spaces='drive',
+            fields='files(id)',
+            pageSize=1
+        ).execute()
+        
+        city_files = city_results.get('files', [])
+        if not city_files:
+            return None
+        
+        city_folder_id = city_files[0]['id']
+        
+        # 查找區域資料夾
+        district_results = drive_service.files().list(
+            q=f"name='{district}' and mimeType='application/vnd.google-apps.folder' and '{city_folder_id}' in parents and trashed=false",
+            spaces='drive',
+            fields='files(id)',
+            pageSize=1
+        ).execute()
+        
+        district_files = district_results.get('files', [])
+        if not district_files:
+            return None
+        
+        district_folder_id = district_files[0]['id']
+        
+        # 查找 CSV 文件
+        csv_results = drive_service.files().list(
+            q=f"name='{filename}' and '{district_folder_id}' in parents and trashed=false",
+            spaces='drive',
+            fields='files(id)',
+            pageSize=1
+        ).execute()
+        
+        csv_files = csv_results.get('files', [])
+        if not csv_files:
+            return None
+        
+        csv_file_id = csv_files[0]['id']
+        
+        # 下載 CSV 文件
+        request = drive_service.files().get_media(fileId=csv_file_id)
+        file_content = BytesIO()
+        downloader = MediaIoBaseDownload(file_content, request)
+        
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+        
+        file_content.seek(0)
+        df = pd.read_csv(file_content, encoding='utf-8-sig')
+        
+        print(f"  ✓ 從 Google Drive 載入: {city}/{district}/{filename}")
+        return df
+        
+    except Exception as e:
+        print(f"  ⚠️ 從 Google Drive 讀取 CSV 失敗：{e}")
+        return None
+
+# ============ 本地文件系統 ============
 
 def get_upload_dir():
     global UPLOAD_DIR
@@ -62,8 +207,14 @@ def get_upload_dir():
 @app.on_event("startup")
 async def startup_event():
     """應用啟動時初始化數據庫並掃描可用的 CSV 文件"""
-    init_database()
-    scan_available_csv_files()
+    try:
+        init_database()
+        init_google_drive()  # 嘗試初始化 Google Drive（可選）
+        scan_available_csv_files()
+    except Exception as e:
+        print(f"⚠️ 啟動事件錯誤：{e}")
+        import traceback
+        traceback.print_exc()
 
 # ============ 數據庫初始化 ============
 
@@ -93,6 +244,7 @@ def init_database():
             property_category TEXT,
             week_id TEXT,
             record_count INTEGER DEFAULT 0,
+            source TEXT DEFAULT 'local',
             last_scanned TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -148,69 +300,59 @@ def parse_dms_coordinate(coord_str: str):
             for match in matches:
                 deg, min_, sec, direction = match
                 if direction in ['N', 'S']:
-                    lat_match = (float(deg), float(min_), float(sec), direction)
+                    lat_match = match
                 elif direction in ['E', 'W']:
-                    lng_match = (float(deg), float(min_), float(sec), direction)
+                    lng_match = match
             
             if lat_match and lng_match:
-                lat = lat_match[0] + lat_match[1]/60 + lat_match[2]/3600
-                if lat_match[3] == 'S':
+                lat_deg, lat_min, lat_sec, lat_dir = lat_match
+                lat = float(lat_deg) + float(lat_min)/60 + float(lat_sec)/3600
+                if lat_dir == 'S':
                     lat = -lat
                 
-                lng = lng_match[0] + lng_match[1]/60 + lng_match[2]/3600
-                if lng_match[3] == 'W':
+                lng_deg, lng_min, lng_sec, lng_dir = lng_match
+                lng = float(lng_deg) + float(lng_min)/60 + float(lng_sec)/3600
+                if lng_dir == 'W':
                     lng = -lng
                 
-                return round(lat, 6), round(lng, 6)
-        
-        return 0, 0
+                return lat, lng
     except Exception as e:
-        print(f"座標解析錯誤: {coord_str} - {e}")
-        return 0, 0
+        pass
+    
+    return 0, 0
 
 def parse_csv_filename(filename: str) -> dict:
-    """
-    解析 CSV 文件名，提取分類信息
-    支援格式：
-    - 新格式: 新北市_中和區_公寓_套房_2604.csv
-    - 舊格式: 591_中和區_公寓_整層住家_page1.csv
-    - 合併格式: 中和公寓套房_2603_merged.csv
-    """
+    """解析 CSV 文件名，提取相關信息"""
     result = {
         'city': '',
         'district': '',
-        'building_type': '',  # apartment 或 building
-        'property_category': '',  # 套房 或 住家
+        'building_type': '',
+        'property_category': '',
         'week_id': ''
     }
     
-    # 移除 .csv 後綴
     name = filename.replace('.csv', '')
     
-    # 嘗試提取週次
     week_match = re.search(r'_(\d{4})(?:_merged)?$', name)
     if week_match:
         result['week_id'] = week_match.group(1)
     
-    # 提取建築類型
     if '電梯大樓' in filename or '電梯' in filename:
         result['building_type'] = 'building'
     elif '公寓' in filename:
         result['building_type'] = 'apartment'
     
-    # 提取房型大類
     if '套房' in filename or '獨立套房' in filename:
         result['property_category'] = '套房'
     elif '住家' in filename or '整層住家' in filename:
         result['property_category'] = '住家'
     
-    # 提取區域
     districts = [
         '板橋區', '三重區', '中和區', '永和區', '新莊區', '新店區', '土城區',
         '蘆洲區', '樹林區', '汐止區', '鶯歌區', '三峽區', '淡水區', '瑞芳區',
         '五股區', '泰山區', '林口區', '深坑區', '石碇區', '坪林區', '三芝區',
         '石門區', '八里區', '平溪區', '雙溪區', '貢寮區', '金山區', '萬里區',
-        '烏來區'
+        '烏來區', '大安區', '信義區', '中山區', '松山區', '南港區', '內湖區'
     ]
     
     for district in districts:
@@ -219,7 +361,6 @@ def parse_csv_filename(filename: str) -> dict:
             result['city'] = '新北市'
             break
     
-    # 如果文件名以城市開頭
     if filename.startswith('新北市'):
         result['city'] = '新北市'
     elif filename.startswith('臺北市') or filename.startswith('台北市'):
@@ -250,7 +391,6 @@ def scan_available_csv_files():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # 清空舊索引
     cursor.execute("DELETE FROM csv_index")
     
     week_ids = set()
@@ -259,7 +399,6 @@ def scan_available_csv_files():
         try:
             info = parse_csv_filename(csv_filename)
             
-            # 計算記錄數
             csv_path = os.path.join(upload_dir, csv_filename)
             try:
                 df = pd.read_csv(csv_path, encoding='utf-8-sig', nrows=0)
@@ -269,10 +408,10 @@ def scan_available_csv_files():
             
             cursor.execute("""
                 INSERT OR REPLACE INTO csv_index 
-                (filename, city, district, building_type, property_category, week_id, record_count, last_scanned)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (filename, city, district, building_type, property_category, week_id, record_count, source, last_scanned)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (csv_filename, info['city'], info['district'], info['building_type'], 
-                  info['property_category'], info['week_id'], record_count, datetime.now().isoformat()))
+                  info['property_category'], info['week_id'], record_count, 'local', datetime.now().isoformat()))
             
             if info['week_id']:
                 week_ids.add(info['week_id'])
@@ -280,36 +419,28 @@ def scan_available_csv_files():
             print(f"  ✓ {csv_filename}: {info['district']} / {info['building_type']} / {info['property_category']} / {info['week_id']}")
         
         except Exception as e:
-            print(f"  ⚠️ {csv_filename} 解析失敗: {e}")
+            print(f"  ⚠️ {csv_filename} 處理失敗: {e}")
     
-    # 更新版本表
-    upload_date = datetime.now().strftime("%Y-%m-%d")
     for week_id in week_ids:
-        cursor.execute("INSERT OR REPLACE INTO versions (week_id, upload_date) VALUES (?, ?)", (week_id, upload_date))
+        cursor.execute("""
+            INSERT OR REPLACE INTO versions (week_id, upload_date)
+            VALUES (?, ?)
+        """, (week_id, datetime.now().strftime("%Y-%m-%d")))
     
     conn.commit()
     conn.close()
     
-    print(f"✅ CSV 索引建立完成，週次版本: {', '.join(sorted(week_ids))}")
+    print(f"✓ 索引建立完成: {len(csv_files)} 個文件, {len(week_ids)} 個週次版本")
 
-def load_csv_data(city: str, district: str, building_type: str = None, property_category: str = None, week_id: str = None) -> list:
+def load_csv_data(city: str, district: str, building_type: str, property_category: str, week_id: str) -> List[dict]:
     """
-    按需載入指定條件的 CSV 數據
-    
-    參數:
-    - city: 縣市
-    - district: 區域
-    - building_type: 建築類型 (apartment/building/None=全部)
-    - property_category: 房型大類 (套房/住家/None=全部)
-    - week_id: 週次
-    
-    返回: 房源列表
+    按需載入 CSV 數據
+    優先從 Google Drive 載入，次之從本地 upload 資料夾
     """
     upload_dir = get_upload_dir()
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # 構建查詢條件
     query = "SELECT filename FROM csv_index WHERE 1=1"
     params = []
     
@@ -339,112 +470,136 @@ def load_csv_data(city: str, district: str, building_type: str = None, property_
     
     all_properties = []
     
-    for csv_filename in csv_files:
-        try:
-            csv_path = os.path.join(upload_dir, csv_filename)
-            df = pd.read_csv(csv_path, encoding='utf-8-sig')
-            
-            # 從文件名提取信息
-            file_info = parse_csv_filename(csv_filename)
-            
-            for _, row in df.iterrows():
-                # 提取案件編號
-                property_id = row.get('案件編號', '')
-                if pd.isna(property_id) or not property_id:
-                    continue
-                property_id = str(int(property_id) if isinstance(property_id, float) else property_id)
-                
-                # 提取標題
-                title = str(row.get('標題', ''))
-                
-                # 提取地址
-                raw_address = str(row.get('地址', ''))
-                # 補充城市和區域
-                if file_info['city'] and not raw_address.startswith(file_info['city']):
-                    raw_address = file_info['city'] + raw_address
-                if file_info['district'] and file_info['district'] not in raw_address:
-                    raw_address = raw_address.replace(file_info['city'], file_info['city'] + file_info['district'])
-                address = raw_address
-                
-                # 租金
-                rent = row.get('租金', 0)
-                if pd.isna(rent):
-                    rent = 0
-                rent = int(rent)
-                
-                # 坪數
-                area = row.get('坪數', row.get('坡數', 0))
-                if pd.isna(area):
-                    area = 0
-                area = float(area)
-                
-                # 房型（細分）
-                room_type = str(row.get('房型', ''))
-                if room_type == 'nan':
-                    room_type = ''
-                
-                # 樓層
-                floor = str(row.get('樓層', ''))
-                if floor == 'nan':
-                    floor = ''
-                
-                # 建築類型
-                building_type_val = file_info['building_type'] or 'unknown'
-                
-                # 房型大類
-                property_category_val = file_info['property_category'] or ''
-                
-                # 座標處理
-                latitude = 0
-                longitude = 0
-                
-                if '緯度' in df.columns and '經度' in df.columns:
-                    lat_val = row.get('緯度', 0)
-                    lng_val = row.get('經度', 0)
-                    if not pd.isna(lat_val) and not pd.isna(lng_val):
-                        latitude = float(lat_val)
-                        longitude = float(lng_val)
-                
-                if latitude == 0 and longitude == 0 and '座標' in df.columns:
-                    coord_str = row.get('座標', '')
-                    if not pd.isna(coord_str):
-                        latitude, longitude = parse_dms_coordinate(str(coord_str))
-                
-                # 週次
-                prop_week_id = row.get('週次', row.get('年週', ''))
-                if pd.isna(prop_week_id) or not prop_week_id:
-                    prop_week_id = file_info['week_id'] or get_week_id()
-                prop_week_id = str(prop_week_id)
-                if prop_week_id.endswith('.0'):
-                    prop_week_id = prop_week_id[:-2]
-                
-                # 跳過無效數據
-                if not address or rent <= 0:
-                    continue
-                
-                all_properties.append({
-                    'property_id': property_id,
-                    'title': title,
-                    'address': address,
-                    'rent_monthly': rent,
-                    'area': area,
-                    'room_type': room_type,
-                    'floor': floor,
-                    'latitude': latitude,
-                    'longitude': longitude,
-                    'building_type': building_type_val,
-                    'property_category': property_category_val,
-                    'upload_week': prop_week_id,
-                    'status': 'active'
-                })
+    # 嘗試從 Google Drive 載入
+    if drive_available and district and week_id:
+        building_types_to_load = []
+        if building_type == '全部' or not building_type:
+            building_types_to_load = ['公寓', '電梯大樓']
+        else:
+            building_types_to_load = [building_type]
         
-        except Exception as e:
-            print(f"  ⚠️ {csv_filename} 讀取失敗: {e}")
-            import traceback
-            traceback.print_exc()
+        categories_to_load = []
+        if property_category == '全部' or not property_category:
+            categories_to_load = ['套房', '住家']
+        else:
+            categories_to_load = [property_category]
+        
+        for bt in building_types_to_load:
+            for cat in categories_to_load:
+                df = get_csv_from_drive(city, district, bt, cat, week_id)
+                if df is not None:
+                    properties = process_dataframe(df, city, district, bt, cat, week_id)
+                    all_properties.extend(properties)
+    
+    # 如果 Google Drive 沒有數據，從本地載入
+    if not all_properties:
+        for csv_filename in csv_files:
+            try:
+                csv_path = os.path.join(upload_dir, csv_filename)
+                df = pd.read_csv(csv_path, encoding='utf-8-sig')
+                
+                file_info = parse_csv_filename(csv_filename)
+                
+                properties = process_dataframe(
+                    df, 
+                    file_info['city'], 
+                    file_info['district'], 
+                    file_info['building_type'], 
+                    file_info['property_category'], 
+                    file_info['week_id']
+                )
+                all_properties.extend(properties)
+            
+            except Exception as e:
+                print(f"  ⚠️ {csv_filename} 讀取失敗: {e}")
+                import traceback
+                traceback.print_exc()
     
     print(f"   載入完成: {len(all_properties)} 筆房源")
     return all_properties
+
+def process_dataframe(df: pd.DataFrame, city: str, district: str, building_type: str, property_category: str, week_id: str) -> List[dict]:
+    """處理 DataFrame 並轉換為房源列表"""
+    properties = []
+    
+    for _, row in df.iterrows():
+        property_id = row.get('案件編號', '')
+        if pd.isna(property_id) or not property_id:
+            continue
+        property_id = str(int(property_id) if isinstance(property_id, float) else property_id)
+        
+        title = str(row.get('標題', ''))
+        
+        raw_address = str(row.get('地址', ''))
+        if city and not raw_address.startswith(city):
+            raw_address = city + raw_address
+        if district and district not in raw_address:
+            raw_address = raw_address.replace(city, city + district)
+        address = raw_address
+        
+        rent = row.get('租金', 0)
+        if pd.isna(rent):
+            rent = 0
+        rent = int(rent)
+        
+        area = row.get('坪數', row.get('坡數', 0))
+        if pd.isna(area):
+            area = 0
+        area = float(area)
+        
+        room_type = str(row.get('房型', ''))
+        if room_type == 'nan':
+            room_type = ''
+        
+        floor = str(row.get('樓層', ''))
+        if floor == 'nan':
+            floor = ''
+        
+        building_type_val = building_type or 'unknown'
+        property_category_val = property_category or ''
+        
+        latitude = 0
+        longitude = 0
+        
+        if '緯度' in df.columns and '經度' in df.columns:
+            lat_val = row.get('緯度', 0)
+            lng_val = row.get('經度', 0)
+            if not pd.isna(lat_val) and not pd.isna(lng_val):
+                latitude = float(lat_val)
+                longitude = float(lng_val)
+        
+        if latitude == 0 and longitude == 0 and '座標' in df.columns:
+            coord_str = row.get('座標', '')
+            if not pd.isna(coord_str):
+                latitude, longitude = parse_dms_coordinate(str(coord_str))
+        
+        prop_week_id = row.get('週次', row.get('年週', ''))
+        if pd.isna(prop_week_id) or not prop_week_id:
+            prop_week_id = week_id or get_week_id()
+        prop_week_id = str(prop_week_id)
+        if prop_week_id.endswith('.0'):
+            prop_week_id = prop_week_id[:-2]
+        
+        if not address or rent <= 0:
+            continue
+        
+        properties.append({
+            'property_id': property_id,
+            'title': title,
+            'address': address,
+            'rent_monthly': rent,
+            'area': area,
+            'room_type': room_type,
+            'floor': floor,
+            'latitude': latitude,
+            'longitude': longitude,
+            'building_type': building_type_val,
+            'property_category': property_category_val,
+            'upload_week': prop_week_id,
+            'status': 'active'
+        })
+    
+    return properties
 
 # ============ API 端點 ============
 
@@ -468,19 +623,15 @@ async def get_available_filters():
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
-        # 獲取可用的區域
         cursor.execute("SELECT DISTINCT city, district FROM csv_index WHERE district != '' ORDER BY city, district")
         districts = [{"city": row[0], "district": row[1]} for row in cursor.fetchall()]
         
-        # 獲取可用的建築類型
         cursor.execute("SELECT DISTINCT building_type FROM csv_index WHERE building_type != ''")
         building_types = [row[0] for row in cursor.fetchall()]
         
-        # 獲取可用的房型大類
         cursor.execute("SELECT DISTINCT property_category FROM csv_index WHERE property_category != ''")
         property_categories = [row[0] for row in cursor.fetchall()]
         
-        # 獲取可用的週次
         cursor.execute("SELECT DISTINCT week_id FROM csv_index WHERE week_id != '' ORDER BY week_id DESC")
         week_ids = [row[0] for row in cursor.fetchall()]
         
@@ -493,7 +644,8 @@ async def get_available_filters():
                 "building_types": building_types,
                 "property_categories": property_categories,
                 "week_ids": week_ids
-            }
+            },
+            "google_drive_available": drive_available
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -511,39 +663,26 @@ async def analysis_v4(
     lat: Optional[float] = None,
     lng: Optional[float] = None
 ):
-    """
-    分析 API - 按需載入指定條件的數據
-    
-    新增參數:
-    - district: 區域（用於決定載入哪些 CSV）
-    - property_category: 房型大類（套房/住家，用於決定載入哪些 CSV）
-    - room_type: 房型細分（套房/2房/3房/3房以上，用於前端篩選）
-    """
+    """分析 API - 按需載入指定條件的數據"""
     try:
-        # 確定查詢座標
         if lat is not None and lng is not None and lat != 0 and lng != 0:
             query_lat, query_lon = lat, lng
         else:
             query_lat, query_lon = 25.0288, 121.4625
         
-        # 從地址提取區域（如果未指定）
         if not district:
             districts = [
                 '板橋區', '三重區', '中和區', '永和區', '新莊區', '新店區', '土城區',
                 '蘆洲區', '樹林區', '汐止區', '鶯歌區', '三峽區', '淡水區', '瑞芳區',
                 '五股區', '泰山區', '林口區', '深坑區', '石碇區', '坪林區', '三芝區',
                 '石門區', '八里區', '平溪區', '雙溪區', '貢寮區', '金山區', '萬里區',
-                '烏來區'
+                '烏來區', '大安區', '信義區', '中山區', '松山區', '南港區', '內湖區'
             ]
             for d in districts:
                 if d in address:
                     district = d
                     break
         
-        # 決定要載入的房型大類
-        # 如果 room_type 是「套房」，只載入套房 CSV
-        # 如果 room_type 是「2房」「3房」「3房以上」，只載入住家 CSV
-        # 如果 room_type 是「全部」或未指定，載入全部
         load_category = None
         if room_type == '套房':
             load_category = '套房'
@@ -552,7 +691,6 @@ async def analysis_v4(
         elif property_category:
             load_category = property_category
         
-        # 按需載入 CSV 數據
         all_properties = load_csv_data(
             city='新北市',
             district=district,
@@ -561,24 +699,18 @@ async def analysis_v4(
             week_id=week_id
         )
         
-        # 篩選符合條件的房源
         filtered_properties = []
         for prop in all_properties:
-            # 檢查座標
             if prop['latitude'] == 0 and prop['longitude'] == 0:
                 continue
             
-            # 計算距離
             distance = haversine_distance(query_lat, query_lon, prop['latitude'], prop['longitude'])
             
-            # 距離篩選
             if distance_min <= distance <= distance_max:
                 prop['distance'] = distance
                 
-                # 房型細分篩選（前端篩選）
                 if room_type and room_type != '全部':
                     if room_type == '套房':
-                        # 套房：只顯示套房
                         if prop.get('property_category') != '套房' and '套房' not in prop.get('room_type', ''):
                             continue
                     elif room_type == '2房':
@@ -589,14 +721,12 @@ async def analysis_v4(
                             continue
                     elif room_type == '3房以上':
                         rt = prop.get('room_type', '')
-                        # 檢查是否有 4房以上
                         has_large = any(str(n) in rt for n in range(4, 10)) or any(c in rt for c in ['四', '五', '六', '七', '八', '九'])
                         if not has_large:
                             continue
                 
                 filtered_properties.append(prop)
         
-        # 計算統計數據
         active_properties = [p for p in filtered_properties if p['status'] == 'active']
         
         if active_properties:
@@ -607,7 +737,6 @@ async def analysis_v4(
         else:
             avg_rent = min_rent = max_rent = avg_area = 0
         
-        # 房型分布統計
         room_type_counts = {}
         for p in active_properties:
             rt = p['room_type'] or '未知'
@@ -638,7 +767,8 @@ async def analysis_v4(
                 "avg_area": round(avg_area, 1)
             },
             "properties": filtered_properties,
-            "room_type_analysis": room_type_analysis
+            "room_type_analysis": room_type_analysis,
+            "data_source": "google_drive" if drive_available else "local"
         }
     except Exception as e:
         import traceback
@@ -673,7 +803,6 @@ async def database_status():
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
-        # CSV 文件統計
         cursor.execute("SELECT COUNT(*) FROM csv_index")
         csv_count = cursor.fetchone()[0]
         
@@ -683,7 +812,6 @@ async def database_status():
         cursor.execute("SELECT week_id, upload_date FROM versions ORDER BY week_id DESC")
         versions = [{"week_id": row[0], "upload_date": row[1]} for row in cursor.fetchall()]
         
-        # CSV 文件詳情
         cursor.execute("SELECT filename, district, building_type, property_category, week_id, record_count FROM csv_index ORDER BY district, building_type, property_category")
         csv_files = [{"filename": row[0], "district": row[1], "building_type": row[2], "property_category": row[3], "week_id": row[4], "record_count": row[5]} for row in cursor.fetchall()]
         
@@ -697,6 +825,10 @@ async def database_status():
                 "versions_count": len(versions),
                 "versions": versions,
                 "csv_files": csv_files
+            },
+            "google_drive": {
+                "available": drive_available,
+                "folder_id": drive_folder_id if drive_available else None
             },
             "timestamp": datetime.now().isoformat()
         }
