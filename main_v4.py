@@ -1,14 +1,16 @@
 """
-租屋行情分析系統 - 版本控制 API v7.0
+租屋行情分析系統 - 版本控制 API v8.0
 支持四象限分類（建物類型 x 房型大類）按需載入 CSV
 支持 Google Drive 分層資料夾管理
-優化效能：只載入指定篩選條件的數據
+新增：本地快取機制，大幅提升效能
 """
 
 import sqlite3
 import json
 import os
 import re
+import time
+import hashlib
 from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,7 +22,7 @@ import pandas as pd
 from io import BytesIO
 
 # 初始化 FastAPI
-app = FastAPI(title="租屋行情分析 API v7.0")
+app = FastAPI(title="租屋行情分析 API v8.0")
 
 # 添加 CORS 中間件
 app.add_middleware(
@@ -36,6 +38,61 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "rental.db")
 
 # Upload 資料夾路徑
 UPLOAD_DIR = None
+
+# ============ 快取配置 ============
+CACHE_DIR = os.path.join(os.path.dirname(__file__), "csv_cache")
+CACHE_EXPIRY_HOURS = 24  # 快取過期時間（小時）
+
+def get_cache_path(file_id: str) -> str:
+    """根據 file_id 生成快取檔案路徑"""
+    return os.path.join(CACHE_DIR, f"{file_id}.csv")
+
+def is_cache_valid(cache_path: str) -> bool:
+    """檢查快取是否有效（存在且未過期）"""
+    if not os.path.exists(cache_path):
+        return False
+    
+    # 檢查快取是否過期
+    file_mtime = os.path.getmtime(cache_path)
+    age_hours = (time.time() - file_mtime) / 3600
+    return age_hours < CACHE_EXPIRY_HOURS
+
+def clear_cache():
+    """清除所有快取檔案"""
+    if os.path.exists(CACHE_DIR):
+        import shutil
+        shutil.rmtree(CACHE_DIR)
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        print(f"✓ 快取已清除")
+        return True
+    return False
+
+def get_cache_stats() -> dict:
+    """獲取快取統計資訊"""
+    if not os.path.exists(CACHE_DIR):
+        return {"total_files": 0, "total_size_mb": 0, "oldest_file": None, "newest_file": None}
+    
+    files = [f for f in os.listdir(CACHE_DIR) if f.endswith('.csv')]
+    total_size = sum(os.path.getsize(os.path.join(CACHE_DIR, f)) for f in files)
+    
+    if not files:
+        return {"total_files": 0, "total_size_mb": 0, "oldest_file": None, "newest_file": None}
+    
+    file_times = [(f, os.path.getmtime(os.path.join(CACHE_DIR, f))) for f in files]
+    file_times.sort(key=lambda x: x[1])
+    
+    return {
+        "total_files": len(files),
+        "total_size_mb": round(total_size / (1024 * 1024), 2),
+        "oldest_file": {
+            "name": file_times[0][0],
+            "age_hours": round((time.time() - file_times[0][1]) / 3600, 1)
+        },
+        "newest_file": {
+            "name": file_times[-1][0],
+            "age_hours": round((time.time() - file_times[-1][1]) / 3600, 1)
+        }
+    }
 
 # ============ Google Drive 配置 ============
 GOOGLE_DRIVE_FOLDER_NAME = "租屋數據"
@@ -106,15 +163,61 @@ def init_google_drive():
         traceback.print_exc()
         return False
 
+def download_file_from_drive(file_id: str, filename: str) -> Optional[pd.DataFrame]:
+    """從 Google Drive 下載單一檔案（帶快取）"""
+    if not drive_available or not drive_service:
+        print(f"  ⚠️ Google Drive 不可用")
+        return None
+    
+    # 確保快取目錄存在
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    
+    # 檢查快取
+    cache_path = get_cache_path(file_id)
+    if is_cache_valid(cache_path):
+        try:
+            df = pd.read_csv(cache_path, encoding='utf-8-sig')
+            print(f"  ✓ 從快取載入: {filename} ({len(df)} 筆)")
+            return df
+        except Exception as e:
+            print(f"  ⚠️ 快取讀取失敗: {e}，將重新下載")
+    
+    # 從 Google Drive 下載
+    try:
+        from googleapiclient.http import MediaIoBaseDownload
+        
+        request = drive_service.files().get_media(fileId=file_id)
+        file_content = BytesIO()
+        downloader = MediaIoBaseDownload(file_content, request)
+        
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+        
+        file_content.seek(0)
+        
+        # 儲存到快取
+        with open(cache_path, 'wb') as f:
+            f.write(file_content.read())
+        
+        # 重新讀取並返回 DataFrame
+        df = pd.read_csv(cache_path, encoding='utf-8-sig')
+        print(f"  ✓ 從 Google Drive 下載並快取: {filename} ({len(df)} 筆)")
+        return df
+        
+    except Exception as e:
+        print(f"  ⚠️ 下載 {filename} (file_id={file_id}) 失敗: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
 def get_csv_from_drive(city: str, district: str, building_type: str, property_category: str, week_id: str) -> Optional[pd.DataFrame]:
-    """從 Google Drive 讀取指定的 CSV 文件（使用數據庫中的 file_id）"""
+    """從 Google Drive 讀取指定的 CSV 文件（使用數據庫中的 file_id，帶快取）"""
     if not drive_available or not drive_service:
         print(f"  ⚠️ Google Drive 不可用")
         return None
     
     try:
-        from googleapiclient.http import MediaIoBaseDownload
-        
         # 從數據庫查詢匹配的檔案
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -154,26 +257,12 @@ def get_csv_from_drive(city: str, district: str, building_type: str, property_ca
         if not results:
             return None
         
-        # 合併所有匹配的 CSV 檔案
+        # 合併所有匹配的 CSV 檔案（使用快取機制）
         all_dfs = []
         for filename, file_id in results:
-            try:
-                # 使用 file_id 直接下載
-                request = drive_service.files().get_media(fileId=file_id)
-                file_content = BytesIO()
-                downloader = MediaIoBaseDownload(file_content, request)
-                
-                done = False
-                while not done:
-                    status, done = downloader.next_chunk()
-                
-                file_content.seek(0)
-                df = pd.read_csv(file_content, encoding='utf-8-sig')
+            df = download_file_from_drive(file_id, filename)
+            if df is not None:
                 all_dfs.append(df)
-                
-                print(f"  ✓ 從 Google Drive 載入: {city}/{district}/{filename} ({len(df)} 筆)")
-            except Exception as e:
-                print(f"  ⚠️ 下載 {filename} 失敗: {e}")
         
         if not all_dfs:
             return None
@@ -261,9 +350,16 @@ def get_upload_dir():
 async def startup_event():
     """應用啟動時初始化數據庫並掃描可用的 CSV 文件"""
     try:
+        # 確保快取目錄存在
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        
         init_database()
         init_google_drive()  # 嘗試初始化 Google Drive（可選）
         scan_available_csv_files()
+        
+        # 顯示快取狀態
+        cache_stats = get_cache_stats()
+        print(f"📦 快取狀態: {cache_stats['total_files']} 個檔案, {cache_stats['total_size_mb']} MB")
     except Exception as e:
         print(f"⚠️ 啟動事件錯誤：{e}")
         import traceback
@@ -614,7 +710,7 @@ def load_csv_data(city: str, district: str, building_type: str, property_categor
     
     all_properties = []
     
-    # 嘗試從 Google Drive 載入
+    # 嘗試從 Google Drive 載入（使用快取）
     if drive_available and district and week_id:
         print(f"📂 嘗試從 Google Drive 載入: city={city}, district={district}, week={week_id}")
         
@@ -961,6 +1057,9 @@ async def database_status():
         
         conn.close()
         
+        # 加入快取狀態
+        cache_stats = get_cache_stats()
+        
         return {
             "status": "success",
             "database": {
@@ -974,6 +1073,7 @@ async def database_status():
                 "available": drive_available,
                 "folder_id": drive_folder_id if drive_available else None
             },
+            "cache": cache_stats,
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
@@ -1032,6 +1132,103 @@ async def get_drive_status():
             result["error"] = str(e)
     
     return result
+
+@app.get("/api/admin/test-download")
+async def test_download(city: str = "台北市", district: str = "大安區", week_id: str = "2604"):
+    """測試從 Google Drive 下載 CSV 檔案（使用快取）"""
+    result = {
+        "city": city,
+        "district": district,
+        "week_id": week_id,
+        "query_result": [],
+        "download_result": [],
+        "cache_used": False,
+        "error": None
+    }
+    
+    try:
+        # 從數據庫查詢匹配的檔案
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT filename, file_id, city, district, building_type, property_category, week_id, source 
+            FROM csv_index 
+            WHERE city = ? AND district = ? AND week_id = ? 
+            AND source = 'google_drive' AND file_id IS NOT NULL
+        """, [city, district, week_id])
+        rows = cursor.fetchall()
+        conn.close()
+        
+        result["query_result"] = [
+            {"filename": r[0], "file_id": r[1], "city": r[2], "district": r[3], 
+             "building_type": r[4], "property_category": r[5], "week_id": r[6], "source": r[7]}
+            for r in rows
+        ]
+        
+        # 嘗試下載第一個檔案（使用快取）
+        if rows and drive_available and drive_service:
+            filename, file_id = rows[0][0], rows[0][1]
+            
+            # 檢查快取
+            cache_path = get_cache_path(file_id)
+            if is_cache_valid(cache_path):
+                result["cache_used"] = True
+            
+            try:
+                df = download_file_from_drive(file_id, filename)
+                
+                if df is not None:
+                    result["download_result"].append({
+                        "filename": filename,
+                        "file_id": file_id,
+                        "success": True,
+                        "rows": len(df),
+                        "columns": list(df.columns),
+                        "sample": df.head(2).to_dict('records'),
+                        "from_cache": result["cache_used"]
+                    })
+                else:
+                    result["download_result"].append({
+                        "filename": filename,
+                        "file_id": file_id,
+                        "success": False,
+                        "error": "DataFrame is None"
+                    })
+            except Exception as e:
+                result["download_result"].append({
+                    "filename": filename,
+                    "file_id": file_id,
+                    "success": False,
+                    "error": str(e)
+                })
+    except Exception as e:
+        result["error"] = str(e)
+        import traceback
+        result["traceback"] = traceback.format_exc()
+    
+    return result
+
+@app.get("/api/admin/cache-status")
+async def cache_status():
+    """獲取快取狀態"""
+    return {
+        "status": "success",
+        "cache_dir": CACHE_DIR,
+        "cache_expiry_hours": CACHE_EXPIRY_HOURS,
+        "stats": get_cache_stats()
+    }
+
+@app.post("/api/admin/clear-cache")
+async def clear_cache_api():
+    """清除所有快取"""
+    try:
+        success = clear_cache()
+        return {
+            "status": "success" if success else "no_cache",
+            "message": "快取已清除" if success else "沒有快取需要清除"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # 靜態文件服務
 static_dir = os.path.dirname(__file__)
