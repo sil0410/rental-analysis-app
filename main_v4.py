@@ -468,54 +468,62 @@ def scan_available_csv_files():
         print(f"⚠️ Upload 資料夾不存在: {upload_dir}")
     
     # === 掃描 Google Drive ===
+    print(f"📁 Google Drive 狀態: available={drive_available}, folder_id={drive_folder_id}")
     if drive_available and drive_folder_id:
         print(f"📁 開始掃描 Google Drive...")
-        drive_files = list_google_drive_files(drive_folder_id)
-        print(f"📁 Google Drive 掃描到 {len(drive_files)} 個 CSV 檔案")
-        
-        for file_info in drive_files:
-            try:
-                filename = file_info['name']
-                file_path = file_info['path']
-                file_id = file_info['id']
-                
-                # 從路徑解析城市和區域
-                # 路徑格式: "縣市/區域/檔案名.csv"
-                path_parts = file_path.split('/')
-                city = ''
-                district = ''
-                
-                if len(path_parts) >= 3:
-                    city = path_parts[0]
-                    district = path_parts[1]
-                elif len(path_parts) == 2:
-                    city = path_parts[0]
-                
-                info = parse_csv_filename(filename)
-                
-                # 如果從路徑解析到了城市和區域，優先使用路徑中的資訊
-                if city:
-                    info['city'] = city
-                if district:
-                    info['district'] = district
-                
-                cursor.execute("""
-                    INSERT OR REPLACE INTO csv_index 
-                    (filename, city, district, building_type, property_category, week_id, record_count, source, file_id, last_scanned)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (filename, info['city'], info['district'], info['building_type'], 
-                      info['property_category'], info['week_id'], 0, 'google_drive', file_id, datetime.now().isoformat()))
-                
-                if info['week_id']:
-                    week_ids.add(info['week_id'])
-                
-                total_files += 1
-                print(f"  ✓ [drive] {file_path}: {info['city']}/{info['district']} / {info['building_type']} / {info['property_category']} / {info['week_id']}")
+        try:
+            drive_files = list_google_drive_files(drive_folder_id)
+            print(f"📁 Google Drive 掃描到 {len(drive_files)} 個 CSV 檔案")
             
-            except Exception as e:
-                print(f"  ⚠️ {file_info['name']} 處理失敗: {e}")
+            for file_info in drive_files:
+                try:
+                    filename = file_info['name']
+                    file_path = file_info['path']
+                    file_id = file_info['id']
+                    
+                    # 從路徑解析城市和區域
+                    # 路徑格式: "縣市/區域/檔案名.csv"
+                    path_parts = file_path.split('/')
+                    city = ''
+                    district = ''
+                    
+                    if len(path_parts) >= 3:
+                        city = path_parts[0]
+                        district = path_parts[1]
+                    elif len(path_parts) == 2:
+                        city = path_parts[0]
+                    
+                    info = parse_csv_filename(filename)
+                    
+                    # 如果從路徑解析到了城市和區域，優先使用路徑中的資訊
+                    if city:
+                        info['city'] = city
+                    if district:
+                        info['district'] = district
+                    
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO csv_index 
+                        (filename, city, district, building_type, property_category, week_id, record_count, source, file_id, last_scanned)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (filename, info['city'], info['district'], info['building_type'], 
+                          info['property_category'], info['week_id'], 0, 'google_drive', file_id, datetime.now().isoformat()))
+                    
+                    if info['week_id']:
+                        week_ids.add(info['week_id'])
+                    
+                    total_files += 1
+                    print(f"  ✓ [drive] {file_path}: {info['city']}/{info['district']} / {info['building_type']} / {info['property_category']} / {info['week_id']}")
+                
+                except Exception as e:
+                    print(f"  ⚠️ {file_info['name']} 處理失敗: {e}")
+                    import traceback
+                    traceback.print_exc()
+        except Exception as e:
+            print(f"⚠️ Google Drive 掃描過程出錯: {e}")
+            import traceback
+            traceback.print_exc()
     else:
-        print("ℹ️ Google Drive 未配置或不可用")
+        print(f"ℹ️ Google Drive 未配置或不可用 (available={drive_available}, folder_id={drive_folder_id})")
     
     # === 更新版本記錄 ===
     for week_id in week_ids:
@@ -946,9 +954,31 @@ async def rescan_csv():
     """重新掃描 CSV 文件"""
     try:
         scan_available_csv_files()
-        return {"status": "success", "message": "CSV 文件已重新掃描"}
+        
+        # 返回掃描結果的詳細資訊
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM csv_index")
+        count = cursor.fetchone()[0]
+        cursor.execute("SELECT DISTINCT city FROM csv_index")
+        cities = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        
+        return {
+            "status": "success", 
+            "message": "CSV 文件已重新掃描",
+            "indexed_files": count,
+            "cities": cities,
+            "drive_available": drive_available,
+            "drive_folder_id": drive_folder_id
+        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        return {
+            "status": "error",
+            "message": str(e),
+            "traceback": traceback.format_exc()
+        }
 
 @app.get("/api/admin/drive-status")
 async def get_drive_status():
