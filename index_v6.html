@@ -1194,7 +1194,6 @@
         async function showAdminMenu() {
             let statusText = '載入中...';
             let googleDriveStatus = '';
-            let cacheStatus = '';
             try {
                 const response = await fetch(`${API_BASE}/admin/database-status`);
                 const data = await response.json();
@@ -1207,11 +1206,6 @@
                     } else {
                         googleDriveStatus = '\n\n☁️ Google Drive: 未連接（使用本地檔案）';
                     }
-                    
-                    // 顯示快取狀態
-                    if (data.cache) {
-                        cacheStatus = `\n\n📦 快取狀態: ${data.cache.total_files} 個檔案, ${data.cache.total_size_mb} MB`;
-                    }
                 } else {
                     statusText = '無法載入數據庫狀態';
                 }
@@ -1219,14 +1213,12 @@
                 statusText = `錯誤: ${error.message}`;
             }
             
-            const choice = prompt(`📊 數據庫狀態:\n\n${statusText}${googleDriveStatus}${cacheStatus}\n\n請選擇操作：\n1 = 🔄 重新掃描 Google Drive\n2 = 🗑️ 清空數據庫\n3 = 🧹 清除快取\n0 = 取消\n\n請輸入數字：`);
+            const choice = prompt(`📊 數據庫狀態:\n\n${statusText}${googleDriveStatus}\n\n請選擇操作：\n1 = 🔄 重新掃描 Google Drive\n2 = 🗑️ 清空數據庫\n0 = 取消\n\n請輸入數字：`);
             
             if (choice === '1') {
                 await rescanGoogleDrive();
             } else if (choice === '2') {
                 await resetDatabase();
-            } else if (choice === '3') {
-                await clearCache();
             }
         }
         
@@ -1281,36 +1273,6 @@
                 }
             } catch (error) {
                 alert('❌ 錯誤: ' + error.message);
-            }
-        }
-        
-        async function clearCache() {
-            if (!confirm('確定要清除所有快取嗎？\n\n清除後，下次查詢時系統將重新從 Google Drive 下載檔案。')) {
-                return;
-            }
-            
-            const statusDiv = document.getElementById('statusText');
-            statusDiv.textContent = '正在清除快取...';
-            
-            try {
-                const response = await fetch(`${API_BASE}/admin/clear-cache`, {
-                    method: 'POST'
-                });
-                const data = await response.json();
-                
-                if (response.ok && data.status === 'success') {
-                    alert('✅ 快取已清除！\n\n下次查詢時將重新從 Google Drive 下載檔案。');
-                    statusDiv.textContent = '快取已清除';
-                } else if (data.status === 'no_cache') {
-                    alert('ℹ️ 沒有快取需要清除');
-                    statusDiv.textContent = '無快取';
-                } else {
-                    alert(`❌ 清除失敗：${data.detail || data.message || '未知錯誤'}`);
-                    statusDiv.textContent = '清除失敗';
-                }
-            } catch (error) {
-                alert(`❌ 錯誤：${error.message}`);
-                statusDiv.textContent = '清除錯誤';
             }
         }
         
