@@ -956,8 +956,8 @@ async def database_status():
         cursor.execute("SELECT week_id, upload_date FROM versions ORDER BY week_id DESC")
         versions = [{"week_id": row[0], "upload_date": row[1]} for row in cursor.fetchall()]
         
-        cursor.execute("SELECT filename, district, building_type, property_category, week_id, record_count FROM csv_index ORDER BY district, building_type, property_category")
-        csv_files = [{"filename": row[0], "district": row[1], "building_type": row[2], "property_category": row[3], "week_id": row[4], "record_count": row[5]} for row in cursor.fetchall()]
+        cursor.execute("SELECT filename, city, district, building_type, property_category, week_id, record_count, source, file_id FROM csv_index ORDER BY city, district, building_type, property_category")
+        csv_files = [{"filename": row[0], "city": row[1], "district": row[2], "building_type": row[3], "property_category": row[4], "week_id": row[5], "record_count": row[6], "source": row[7], "file_id": row[8]} for row in cursor.fetchall()]
         
         conn.close()
         
