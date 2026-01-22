@@ -950,6 +950,29 @@ async def rescan_csv():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/admin/drive-status")
+async def get_drive_status():
+    """診斷 Google Drive 連接狀態"""
+    result = {
+        "drive_available": drive_available,
+        "drive_folder_id": drive_folder_id,
+        "drive_folder_name": GOOGLE_DRIVE_FOLDER_NAME,
+        "has_service": drive_service is not None,
+        "env_key_exists": os.getenv('GOOGLE_DRIVE_KEY_JSON') is not None,
+        "files_found": [],
+        "error": None
+    }
+    
+    if drive_available and drive_folder_id:
+        try:
+            files = list_google_drive_files(drive_folder_id)
+            result["files_found"] = files[:50]  # 只返回前 50 個檔案
+            result["total_files"] = len(files)
+        except Exception as e:
+            result["error"] = str(e)
+    
+    return result
+
 # 靜態文件服務
 static_dir = os.path.dirname(__file__)
 if os.path.exists(static_dir):
