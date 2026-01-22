@@ -627,13 +627,16 @@ def scan_available_csv_files():
     else:
         print(f"⚠️ Upload 資料夾不存在: {upload_dir}")
     
-    # === 掃描 Google Drive ===
+    # === 掃描 Google Drive 並自動下載到 upload 資料夾 ===
     print(f"📁 Google Drive 狀態: available={drive_available}, folder_id={drive_folder_id}")
     if drive_available and drive_folder_id:
-        print(f"📁 開始掃描 Google Drive...")
+        print(f"📁 開始掃描 Google Drive 並同步檔案...")
         try:
             drive_files = list_google_drive_files(drive_folder_id)
             print(f"📁 Google Drive 掃描到 {len(drive_files)} 個 CSV 檔案")
+            
+            downloaded_count = 0
+            skipped_count = 0
             
             for file_info in drive_files:
                 try:
@@ -661,23 +664,58 @@ def scan_available_csv_files():
                     if district:
                         info['district'] = district
                     
+                    # 自動下載到 upload 資料夾
+                    local_path = os.path.join(upload_dir, filename)
+                    record_count = 0
+                    
+                    if os.path.exists(local_path):
+                        # 檔案已存在，跳過下載
+                        try:
+                            record_count = sum(1 for _ in open(local_path, encoding='utf-8-sig')) - 1
+                        except:
+                            record_count = 0
+                        skipped_count += 1
+                    else:
+                        # 下載檔案到 upload 資料夾
+                        try:
+                            df = download_file_from_drive(file_id, filename)
+                            if df is not None:
+                                # 從快取複製到 upload 資料夾
+                                cache_path = get_cache_path(file_id)
+                                if os.path.exists(cache_path):
+                                    import shutil
+                                    shutil.copy2(cache_path, local_path)
+                                    record_count = len(df)
+                                    downloaded_count += 1
+                                    print(f"  ⬇️ 已下載: {filename} ({record_count} 筆)")
+                                else:
+                                    # 如果快取不存在，直接儲存 DataFrame
+                                    df.to_csv(local_path, index=False, encoding='utf-8-sig')
+                                    record_count = len(df)
+                                    downloaded_count += 1
+                                    print(f"  ⬇️ 已下載: {filename} ({record_count} 筆)")
+                        except Exception as download_error:
+                            print(f"  ⚠️ 下載失敗: {filename} - {download_error}")
+                    
+                    # 索引記錄為本地檔案（因為已下載到 upload）
                     cursor.execute("""
                         INSERT OR REPLACE INTO csv_index 
                         (filename, city, district, building_type, property_category, week_id, record_count, source, file_id, last_scanned)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (filename, info['city'], info['district'], info['building_type'], 
-                          info['property_category'], info['week_id'], 0, 'google_drive', file_id, datetime.now().isoformat()))
+                          info['property_category'], info['week_id'], record_count, 'local', file_id, datetime.now().isoformat()))
                     
                     if info['week_id']:
                         week_ids.add(info['week_id'])
                     
                     total_files += 1
-                    print(f"  ✓ [drive] {file_path}: {info['city']}/{info['district']} / {info['building_type']} / {info['property_category']} / {info['week_id']}")
                 
                 except Exception as e:
                     print(f"  ⚠️ {file_info['name']} 處理失敗: {e}")
                     import traceback
                     traceback.print_exc()
+            
+            print(f"✅ Google Drive 同步完成: 新下載 {downloaded_count} 個, 已存在 {skipped_count} 個")
         except Exception as e:
             print(f"⚠️ Google Drive 掃描過程出錯: {e}")
             import traceback
