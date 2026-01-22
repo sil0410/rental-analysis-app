@@ -107,75 +107,86 @@ def init_google_drive():
         return False
 
 def get_csv_from_drive(city: str, district: str, building_type: str, property_category: str, week_id: str) -> Optional[pd.DataFrame]:
-    """從 Google Drive 讀取指定的 CSV 文件"""
-    if not drive_available or not drive_service or not drive_folder_id:
+    """從 Google Drive 讀取指定的 CSV 文件（使用數據庫中的 file_id）"""
+    if not drive_available or not drive_service:
+        print(f"  ⚠️ Google Drive 不可用")
         return None
     
     try:
         from googleapiclient.http import MediaIoBaseDownload
         
-        # 構建文件名
-        filename = f"{building_type}_{property_category}_{week_id}.csv"
+        # 從數據庫查詢匹配的檔案
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
         
-        # 查找城市資料夾
-        city_results = drive_service.files().list(
-            q=f"name='{city}' and mimeType='application/vnd.google-apps.folder' and '{drive_folder_id}' in parents and trashed=false",
-            spaces='drive',
-            fields='files(id)',
-            pageSize=1
-        ).execute()
+        # 轉換建物類型格式
+        bt_db = building_type
+        if building_type == '公寓':
+            bt_db = 'apartment'
+        elif building_type == '電梯大樓':
+            bt_db = 'building'
         
-        city_files = city_results.get('files', [])
-        if not city_files:
+        # 查詢匹配的檔案（使用 file_id）
+        query = """
+            SELECT filename, file_id FROM csv_index 
+            WHERE city = ? AND district = ? AND week_id = ? 
+            AND source = 'google_drive' AND file_id IS NOT NULL
+        """
+        params = [city, district, week_id]
+        
+        # 如果指定了建物類型，加入篩選條件
+        if bt_db and bt_db not in ['all', '全部']:
+            query += " AND building_type = ?"
+            params.append(bt_db)
+        
+        # 如果指定了房型，加入篩選條件
+        if property_category and property_category not in ['all', '全部']:
+            query += " AND property_category = ?"
+            params.append(property_category)
+        
+        cursor.execute(query, params)
+        results = cursor.fetchall()
+        conn.close()
+        
+        print(f"  📂 查詢 Google Drive: city={city}, district={district}, bt={bt_db}, cat={property_category}, week={week_id}")
+        print(f"     找到 {len(results)} 個匹配的檔案")
+        
+        if not results:
             return None
         
-        city_folder_id = city_files[0]['id']
+        # 合併所有匹配的 CSV 檔案
+        all_dfs = []
+        for filename, file_id in results:
+            try:
+                # 使用 file_id 直接下載
+                request = drive_service.files().get_media(fileId=file_id)
+                file_content = BytesIO()
+                downloader = MediaIoBaseDownload(file_content, request)
+                
+                done = False
+                while not done:
+                    status, done = downloader.next_chunk()
+                
+                file_content.seek(0)
+                df = pd.read_csv(file_content, encoding='utf-8-sig')
+                all_dfs.append(df)
+                
+                print(f"  ✓ 從 Google Drive 載入: {city}/{district}/{filename} ({len(df)} 筆)")
+            except Exception as e:
+                print(f"  ⚠️ 下載 {filename} 失敗: {e}")
         
-        # 查找區域資料夾
-        district_results = drive_service.files().list(
-            q=f"name='{district}' and mimeType='application/vnd.google-apps.folder' and '{city_folder_id}' in parents and trashed=false",
-            spaces='drive',
-            fields='files(id)',
-            pageSize=1
-        ).execute()
-        
-        district_files = district_results.get('files', [])
-        if not district_files:
+        if not all_dfs:
             return None
         
-        district_folder_id = district_files[0]['id']
-        
-        # 查找 CSV 文件
-        csv_results = drive_service.files().list(
-            q=f"name='{filename}' and '{district_folder_id}' in parents and trashed=false",
-            spaces='drive',
-            fields='files(id)',
-            pageSize=1
-        ).execute()
-        
-        csv_files = csv_results.get('files', [])
-        if not csv_files:
-            return None
-        
-        csv_file_id = csv_files[0]['id']
-        
-        # 下載 CSV 文件
-        request = drive_service.files().get_media(fileId=csv_file_id)
-        file_content = BytesIO()
-        downloader = MediaIoBaseDownload(file_content, request)
-        
-        done = False
-        while not done:
-            status, done = downloader.next_chunk()
-        
-        file_content.seek(0)
-        df = pd.read_csv(file_content, encoding='utf-8-sig')
-        
-        print(f"  ✓ 從 Google Drive 載入: {city}/{district}/{filename}")
-        return df
+        # 合併所有 DataFrame
+        combined_df = pd.concat(all_dfs, ignore_index=True)
+        print(f"  ✓ 合併完成: 共 {len(combined_df)} 筆資料")
+        return combined_df
         
     except Exception as e:
         print(f"  ⚠️ 從 Google Drive 讀取 CSV 失敗：{e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 def list_google_drive_files(folder_id: str, path: str = "") -> list:
@@ -577,24 +588,15 @@ def load_csv_data(city: str, district: str, building_type: str, property_categor
     
     # 嘗試從 Google Drive 載入
     if drive_available and district and week_id:
-        building_types_to_load = []
-        if building_type == '全部' or not building_type:
-            building_types_to_load = ['公寓', '電梯大樓']
-        else:
-            building_types_to_load = [building_type]
+        print(f"📂 嘗試從 Google Drive 載入: city={city}, district={district}, week={week_id}")
         
-        categories_to_load = []
-        if property_category == '全部' or not property_category:
-            categories_to_load = ['套房', '住家']
-        else:
-            categories_to_load = [property_category]
-        
-        for bt in building_types_to_load:
-            for cat in categories_to_load:
-                df = get_csv_from_drive(city, district, bt, cat, week_id)
-                if df is not None:
-                    properties = process_dataframe(df, city, district, bt, cat, week_id)
-                    all_properties.extend(properties)
+        # 直接使用 get_csv_from_drive，它會自動處理建物類型和房型的篩選
+        df = get_csv_from_drive(city, district, building_type, property_category, week_id)
+        if df is not None:
+            # 從數據庫獲取建物類型和房型資訊
+            properties = process_dataframe(df, city, district, building_type or '全部', property_category or '全部', week_id)
+            all_properties.extend(properties)
+            print(f"   ✓ 從 Google Drive 載入 {len(properties)} 筆資料")
     
     # 如果 Google Drive 沒有數據，從本地載入
     if not all_properties:
