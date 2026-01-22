@@ -11,6 +11,9 @@
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
+    <!-- deck.gl for Heatmap (replacing deprecated Google Maps HeatmapLayer) -->
+    <script src="https://unpkg.com/deck.gl@latest/dist.min.js"></script>
+    
     <style>
         * {
             margin: 0;
@@ -410,8 +413,8 @@
             <div id="advancedHeatmapControls" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee;">
                 <label style="font-size: 12px; color: #666;">📈 熱力圖影響範圍</label>
                 <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
-                    <input type="range" id="heatmapRadius" min="10" max="100" value="40" step="5" style="flex: 1;">
-                    <span id="radiusValue" style="font-size: 12px; color: #666; min-width: 35px;">40m</span>
+                    <input type="range" id="heatmapRadius" min="10" max="100" value="25" step="5" oninput="updateHeatmapRadius(this.value)" style="flex: 1;">
+                    <span id="radiusValue" style="font-size: 12px; color: #666; min-width: 40px;">25px</span>
                 </div>
             </div>
         </div>
@@ -535,8 +538,9 @@
         let roomTypeChart = null;
         let rentAnalysisChart = null;
         let heatmapLayer = null;
+        let deckglOverlay = null; // deck.gl overlay for heatmap
         let heatmapMode = 'density'; // 預設為房源密度
-        let heatmapRadius = 40; // 熱力圖影響範圍 (米) - 預設 40M
+        let heatmapRadius = 25; // 熱力圖影響範圍 (像素) - 預設 25px
         
         // 地區數據
         const districtsData = {
@@ -835,6 +839,7 @@
                     // 查詢 API（傳遞座標以確保前後端一致）
                     const params = new URLSearchParams({
                         address: address,
+                        city: city,
                         district: district,
                         distance_min: distanceMin,
                         distance_max: distanceMax,
@@ -964,10 +969,11 @@
         function clearMarkers() {
             markers.forEach(marker => marker.setMap(null));
             markers = [];
-            if (heatmapLayer) {
-                heatmapLayer.setMap(null);
-                heatmapLayer = null;
+            // 清除 deck.gl 熱力圖
+            if (deckglOverlay) {
+                deckglOverlay.setProps({ layers: [] });
             }
+            heatmapLayer = null;
         }
         
         // 顯示房源詳情
@@ -1090,37 +1096,46 @@
             });
         }
         
-        // 更新熱力圖
+        // 更新熱力圖 (使用 deck.gl)
         function updateHeatmap(data) {
-            if (heatmapLayer) {
-                heatmapLayer.setMap(null);
-            }
+            // 準備資料
+            const heatmapData = data.properties.map(prop => ({
+                position: [prop.longitude, prop.latitude],
+                weight: heatmapMode === 'rent' ? (prop.rent_monthly / 10000) : 1
+            }));
             
-            const radius = advancedMode ? heatmapRadius : (heatmapMode === 'rent' ? 50 : 80);
+            // 計算半徑（像素）
+            const radiusPixels = advancedMode ? heatmapRadius : 25;
             
-            if (heatmapMode === 'rent') {
-                const rentData = data.properties.map(prop => ({
-                    location: new google.maps.LatLng(prop.latitude, prop.longitude),
-                    weight: prop.rent_monthly / 50000
-                }));
-                
-                heatmapLayer = new google.maps.visualization.HeatmapLayer({
-                    data: rentData,
-                    map: map,
-                    radius: radius,
-                    opacity: 0.6
+            // 建立 deck.gl HeatmapLayer
+            heatmapLayer = new deck.HeatmapLayer({
+                id: 'rental-heatmap',
+                data: heatmapData,
+                getPosition: d => d.position,
+                getWeight: d => d.weight,
+                radiusPixels: radiusPixels,
+                intensity: 1,
+                threshold: 0.03,
+                colorRange: [
+                    [255, 255, 178],
+                    [254, 204, 92],
+                    [253, 141, 60],
+                    [240, 59, 32],
+                    [189, 0, 38]
+                ],
+                opacity: 0.6
+            });
+            
+            // 如果 overlay 已存在，更新 layers；否則建立新的 overlay
+            if (deckglOverlay) {
+                deckglOverlay.setProps({
+                    layers: [heatmapLayer]
                 });
-            } else if (heatmapMode === 'density') {
-                const densityData = data.properties.map(prop => 
-                    new google.maps.LatLng(prop.latitude, prop.longitude)
-                );
-                
-                heatmapLayer = new google.maps.visualization.HeatmapLayer({
-                    data: densityData,
-                    map: map,
-                    radius: radius,
-                    opacity: 0.6
+            } else {
+                deckglOverlay = new deck.GoogleMapsOverlay({
+                    layers: [heatmapLayer]
                 });
+                deckglOverlay.setMap(map);
             }
         }
         
@@ -1128,6 +1143,15 @@
         function setHeatmapMode(mode) {
             heatmapMode = mode;
             document.getElementById('heatmapDensity').classList.toggle('active', mode === 'density');
+            if (currentData) {
+                updateHeatmap(currentData);
+            }
+        }
+        
+        // 更新熱力圖半徑
+        function updateHeatmapRadius(value) {
+            heatmapRadius = parseInt(value);
+            document.getElementById('radiusValue').textContent = value + 'px';
             if (currentData) {
                 updateHeatmap(currentData);
             }

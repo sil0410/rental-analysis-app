@@ -750,6 +750,7 @@ async def get_available_filters():
 @app.get("/api/analysis_v4")
 async def analysis_v4(
     address: str,
+    city: Optional[str] = None,
     district: Optional[str] = None,
     distance_min: int = 0,
     distance_max: int = 5000,
@@ -788,8 +789,16 @@ async def analysis_v4(
         elif property_category:
             load_category = property_category
         
+        # 根據區域自動判斷城市（如果未提供）
+        if not city:
+            taipei_districts = ['中正區', '大同區', '中山區', '松山區', '大安區', '萬華區', '信義區', '士林區', '北投區', '內湖區', '南港區', '文山區']
+            if district in taipei_districts:
+                city = '台北市'
+            else:
+                city = '新北市'
+        
         all_properties = load_csv_data(
-            city='新北市',
+            city=city,
             district=district,
             building_type=building_type,
             property_category=load_category,
