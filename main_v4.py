@@ -178,6 +178,48 @@ def get_csv_from_drive(city: str, district: str, building_type: str, property_ca
         print(f"  ⚠️ 從 Google Drive 讀取 CSV 失敗：{e}")
         return None
 
+def list_google_drive_files(folder_id: str, path: str = "") -> list:
+    """遞迴列出 Google Drive 資料夾中的所有 CSV 檔案"""
+    if not drive_available or not drive_service:
+        return []
+    
+    files_found = []
+    
+    try:
+        # 列出資料夾中的所有項目
+        results = drive_service.files().list(
+            q=f"'{folder_id}' in parents and trashed=false",
+            spaces='drive',
+            fields='files(id, name, mimeType)',
+            pageSize=1000
+        ).execute()
+        
+        items = results.get('files', [])
+        
+        for item in items:
+            item_name = item['name']
+            item_id = item['id']
+            item_type = item['mimeType']
+            current_path = f"{path}/{item_name}" if path else item_name
+            
+            if item_type == 'application/vnd.google-apps.folder':
+                # 遞迴進入子資料夾
+                sub_files = list_google_drive_files(item_id, current_path)
+                files_found.extend(sub_files)
+            elif item_name.endswith('.csv'):
+                # 找到 CSV 檔案
+                files_found.append({
+                    'id': item_id,
+                    'name': item_name,
+                    'path': current_path
+                })
+        
+        return files_found
+        
+    except Exception as e:
+        print(f"⚠️ 列出 Google Drive 資料夾失敗 ({path}): {e}")
+        return []
+
 # ============ 本地文件系統 ============
 
 def get_upload_dir():
@@ -245,9 +287,16 @@ def init_database():
             week_id TEXT,
             record_count INTEGER DEFAULT 0,
             source TEXT DEFAULT 'local',
+            file_id TEXT,
             last_scanned TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    
+    # 嘗試新增 file_id 欄位（如果表已存在但沒有此欄位）
+    try:
+        cursor.execute("ALTER TABLE csv_index ADD COLUMN file_id TEXT")
+    except:
+        pass  # 欄位已存在
     
     conn.commit()
     conn.close()
@@ -373,54 +422,102 @@ def parse_csv_filename(filename: str) -> dict:
     return result
 
 def scan_available_csv_files():
-    """掃描 upload 資料夾中的 CSV 文件並建立索引"""
+    """掃描 upload 資料夾和 Google Drive 中的 CSV 文件並建立索引"""
     upload_dir = get_upload_dir()
-    
-    if not os.path.exists(upload_dir):
-        print(f"⚠️ Upload 資料夾不存在: {upload_dir}")
-        return
-    
-    csv_files = [f for f in os.listdir(upload_dir) if f.endswith('.csv')]
-    
-    if not csv_files:
-        print("⚠️ upload 資料夾中沒有找到 CSV 檔案")
-        return
-    
-    print(f"📁 掃描到 {len(csv_files)} 個 CSV 檔案")
     
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
+    # 清空舊索引
     cursor.execute("DELETE FROM csv_index")
     
     week_ids = set()
+    total_files = 0
     
-    for csv_filename in csv_files:
-        try:
-            info = parse_csv_filename(csv_filename)
-            
-            csv_path = os.path.join(upload_dir, csv_filename)
-            try:
-                df = pd.read_csv(csv_path, encoding='utf-8-sig', nrows=0)
-                record_count = sum(1 for _ in open(csv_path, encoding='utf-8-sig')) - 1
-            except:
-                record_count = 0
-            
-            cursor.execute("""
-                INSERT OR REPLACE INTO csv_index 
-                (filename, city, district, building_type, property_category, week_id, record_count, source, last_scanned)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (csv_filename, info['city'], info['district'], info['building_type'], 
-                  info['property_category'], info['week_id'], record_count, 'local', datetime.now().isoformat()))
-            
-            if info['week_id']:
-                week_ids.add(info['week_id'])
-            
-            print(f"  ✓ {csv_filename}: {info['district']} / {info['building_type']} / {info['property_category']} / {info['week_id']}")
+    # === 掃描本地 upload 資料夾 ===
+    if os.path.exists(upload_dir):
+        csv_files = [f for f in os.listdir(upload_dir) if f.endswith('.csv')]
+        print(f"📁 本地掃描到 {len(csv_files)} 個 CSV 檔案")
         
-        except Exception as e:
-            print(f"  ⚠️ {csv_filename} 處理失敗: {e}")
+        for csv_filename in csv_files:
+            try:
+                info = parse_csv_filename(csv_filename)
+                
+                csv_path = os.path.join(upload_dir, csv_filename)
+                try:
+                    record_count = sum(1 for _ in open(csv_path, encoding='utf-8-sig')) - 1
+                except:
+                    record_count = 0
+                
+                cursor.execute("""
+                    INSERT OR REPLACE INTO csv_index 
+                    (filename, city, district, building_type, property_category, week_id, record_count, source, last_scanned)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (csv_filename, info['city'], info['district'], info['building_type'], 
+                      info['property_category'], info['week_id'], record_count, 'local', datetime.now().isoformat()))
+                
+                if info['week_id']:
+                    week_ids.add(info['week_id'])
+                
+                total_files += 1
+                print(f"  ✓ [local] {csv_filename}: {info['city']}/{info['district']} / {info['building_type']} / {info['property_category']} / {info['week_id']}")
+            
+            except Exception as e:
+                print(f"  ⚠️ {csv_filename} 處理失敗: {e}")
+    else:
+        print(f"⚠️ Upload 資料夾不存在: {upload_dir}")
     
+    # === 掃描 Google Drive ===
+    if drive_available and drive_folder_id:
+        print(f"📁 開始掃描 Google Drive...")
+        drive_files = list_google_drive_files(drive_folder_id)
+        print(f"📁 Google Drive 掃描到 {len(drive_files)} 個 CSV 檔案")
+        
+        for file_info in drive_files:
+            try:
+                filename = file_info['name']
+                file_path = file_info['path']
+                file_id = file_info['id']
+                
+                # 從路徑解析城市和區域
+                # 路徑格式: "縣市/區域/檔案名.csv"
+                path_parts = file_path.split('/')
+                city = ''
+                district = ''
+                
+                if len(path_parts) >= 3:
+                    city = path_parts[0]
+                    district = path_parts[1]
+                elif len(path_parts) == 2:
+                    city = path_parts[0]
+                
+                info = parse_csv_filename(filename)
+                
+                # 如果從路徑解析到了城市和區域，優先使用路徑中的資訊
+                if city:
+                    info['city'] = city
+                if district:
+                    info['district'] = district
+                
+                cursor.execute("""
+                    INSERT OR REPLACE INTO csv_index 
+                    (filename, city, district, building_type, property_category, week_id, record_count, source, file_id, last_scanned)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (filename, info['city'], info['district'], info['building_type'], 
+                      info['property_category'], info['week_id'], 0, 'google_drive', file_id, datetime.now().isoformat()))
+                
+                if info['week_id']:
+                    week_ids.add(info['week_id'])
+                
+                total_files += 1
+                print(f"  ✓ [drive] {file_path}: {info['city']}/{info['district']} / {info['building_type']} / {info['property_category']} / {info['week_id']}")
+            
+            except Exception as e:
+                print(f"  ⚠️ {file_info['name']} 處理失敗: {e}")
+    else:
+        print("ℹ️ Google Drive 未配置或不可用")
+    
+    # === 更新版本記錄 ===
     for week_id in week_ids:
         cursor.execute("""
             INSERT OR REPLACE INTO versions (week_id, upload_date)
@@ -430,7 +527,7 @@ def scan_available_csv_files():
     conn.commit()
     conn.close()
     
-    print(f"✓ 索引建立完成: {len(csv_files)} 個文件, {len(week_ids)} 個週次版本")
+    print(f"✓ 索引建立完成: {total_files} 個文件, {len(week_ids)} 個週次版本")
 
 def load_csv_data(city: str, district: str, building_type: str, property_category: str, week_id: str) -> List[dict]:
     """
