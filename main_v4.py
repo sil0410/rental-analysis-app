@@ -812,6 +812,107 @@ def load_csv_data(city: str, district: str, building_type: str, property_categor
     print(f"   載入完成: {len(all_properties)} 筆房源")
     return all_properties
 
+def get_all_week_ids() -> List[str]:
+    """獲取所有可用的週次 ID，按降序排列"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT week_id FROM csv_index WHERE week_id IS NOT NULL ORDER BY week_id DESC")
+        week_ids = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        return week_ids
+    except:
+        return []
+
+def load_property_ids_for_week(city: str, district: str, building_type: str, property_category: str, week_id: str) -> set:
+    """載入指定週次的所有案件編號"""
+    properties = load_csv_data(city, district, building_type, property_category, week_id)
+    return set(p['property_id'] for p in properties if p.get('property_id'))
+
+def calculate_property_status(current_properties: List[dict], city: str, district: str, 
+                               building_type: str, property_category: str, current_week_id: str) -> List[dict]:
+    """
+    計算每個房源的狀態（新增/持續/消失）
+    - 新增：本週首次出現 -> status='new', weeks_active=1
+    - 持續：已存在多週 -> status='active', weeks_active=N
+    - 消失：之前有但本週沒有 -> status='inactive'
+    """
+    all_weeks = get_all_week_ids()
+    
+    if not all_weeks or current_week_id not in all_weeks:
+        # 沒有歷史資料，所有都是新增
+        for prop in current_properties:
+            prop['status'] = 'new'
+            prop['weeks_active'] = 1
+            prop['first_seen_week'] = current_week_id
+        return current_properties
+    
+    current_week_index = all_weeks.index(current_week_id)
+    
+    # 獲取歷史週次（最多回溯 10 週）
+    history_weeks = all_weeks[current_week_index + 1:current_week_index + 11]
+    
+    # 載入歷史週次的案件編號
+    history_property_ids = {}  # {week_id: set of property_ids}
+    for week in history_weeks:
+        try:
+            ids = load_property_ids_for_week(city, district, building_type, property_category, week)
+            history_property_ids[week] = ids
+        except:
+            history_property_ids[week] = set()
+    
+    # 合併所有歷史案件編號
+    all_history_ids = set()
+    for ids in history_property_ids.values():
+        all_history_ids.update(ids)
+    
+    # 當前週次的案件編號
+    current_ids = set(p['property_id'] for p in current_properties if p.get('property_id'))
+    
+    # 計算每個房源的狀態
+    property_dict = {p['property_id']: p for p in current_properties if p.get('property_id')}
+    
+    for prop_id, prop in property_dict.items():
+        # 檢查這個案件在歷史中出現過幾次
+        weeks_seen = 0
+        first_seen_week = current_week_id
+        
+        for week in reversed(history_weeks):  # 從最舊的開始檢查
+            if prop_id in history_property_ids.get(week, set()):
+                weeks_seen += 1
+                first_seen_week = week
+        
+        if weeks_seen == 0:
+            # 新增案件（本週首次出現）
+            prop['status'] = 'new'
+            prop['weeks_active'] = 1
+            prop['first_seen_week'] = current_week_id
+        else:
+            # 持續案件
+            prop['status'] = 'active'
+            prop['weeks_active'] = weeks_seen + 1  # 加上當前週
+            prop['first_seen_week'] = first_seen_week
+    
+    # 檢查消失的案件（上週有但本週沒有）
+    result_properties = list(property_dict.values())
+    
+    if history_weeks:
+        last_week = history_weeks[0]  # 上一週
+        last_week_ids = history_property_ids.get(last_week, set())
+        disappeared_ids = last_week_ids - current_ids
+        
+        # 載入上週的完整資料以獲取消失案件的詳細資訊
+        if disappeared_ids:
+            last_week_properties = load_csv_data(city, district, building_type, property_category, last_week)
+            for prop in last_week_properties:
+                if prop.get('property_id') in disappeared_ids:
+                    prop['status'] = 'inactive'
+                    prop['weeks_active'] = 0
+                    prop['disappeared_week'] = current_week_id
+                    result_properties.append(prop)
+    
+    return result_properties
+
 def process_dataframe(df: pd.DataFrame, city: str, district: str, building_type: str, property_category: str, week_id: str) -> List[dict]:
     """處理 DataFrame 並轉換為房源列表"""
     properties = []
@@ -1001,6 +1102,27 @@ async def analysis_v4(
             week_id=week_id
         )
         
+        # 計算房源狀態（新增/持續/消失）
+        if week_id:
+            all_properties = calculate_property_status(
+                all_properties, city, district, building_type, load_category, week_id
+            )
+        else:
+            # 沒有指定週次，預設為新增
+            for prop in all_properties:
+                prop['status'] = 'new'
+                prop['weeks_active'] = 1
+        
+        # 去除重複案件（依據案件編號）
+        seen_ids = set()
+        unique_properties = []
+        for prop in all_properties:
+            prop_id = prop.get('property_id')
+            if prop_id and prop_id not in seen_ids:
+                seen_ids.add(prop_id)
+                unique_properties.append(prop)
+        all_properties = unique_properties
+        
         filtered_properties = []
         for prop in all_properties:
             if prop['latitude'] == 0 and prop['longitude'] == 0:
@@ -1029,18 +1151,24 @@ async def analysis_v4(
                 
                 filtered_properties.append(prop)
         
-        active_properties = [p for p in filtered_properties if p['status'] == 'active']
+        # 分類統計
+        new_properties = [p for p in filtered_properties if p.get('status') == 'new']
+        active_properties = [p for p in filtered_properties if p.get('status') == 'active']
+        inactive_properties = [p for p in filtered_properties if p.get('status') == 'inactive']
         
-        if active_properties:
-            avg_rent = sum(p['rent_monthly'] for p in active_properties) / len(active_properties)
-            min_rent = min(p['rent_monthly'] for p in active_properties)
-            max_rent = max(p['rent_monthly'] for p in active_properties)
-            avg_area = sum(p['area'] for p in active_properties if p['area'] > 0) / max(1, len([p for p in active_properties if p['area'] > 0]))
+        # 計算統計數據（排除消失的案件）
+        available_properties = new_properties + active_properties
+        
+        if available_properties:
+            avg_rent = sum(p['rent_monthly'] for p in available_properties) / len(available_properties)
+            min_rent = min(p['rent_monthly'] for p in available_properties)
+            max_rent = max(p['rent_monthly'] for p in available_properties)
+            avg_area = sum(p['area'] for p in available_properties if p['area'] > 0) / max(1, len([p for p in available_properties if p['area'] > 0]))
         else:
             avg_rent = min_rent = max_rent = avg_area = 0
         
         room_type_counts = {}
-        for p in active_properties:
+        for p in available_properties:
             rt = p['room_type'] or '未知'
             room_type_counts[rt] = room_type_counts.get(rt, 0) + 1
         
@@ -1060,9 +1188,10 @@ async def analysis_v4(
             },
             "summary": {
                 "total_properties": len(filtered_properties),
+                "available_properties": len(available_properties),
+                "new_properties": len(new_properties),
                 "active_properties": len(active_properties),
-                "deleted_properties": len(filtered_properties) - len(active_properties),
-                "new_properties": 0,
+                "inactive_properties": len(inactive_properties),
                 "avg_rent_all": round(avg_rent),
                 "min_rent": min_rent,
                 "max_rent": max_rent,

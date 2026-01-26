@@ -435,6 +435,19 @@
         <!-- 地圖 -->
         <div id="map"></div>
         
+        <!-- 房源狀態圖例 -->
+        <div id="statusLegend" class="heatmap-legend" style="display: block; top: 10px; right: 320px;">
+            <div class="legend-title">房源狀態</div>
+            <div class="legend-items">
+                <div class="legend-item"><span class="legend-color" style="background-color: #22C55E; border-radius: 50%;"></span><span class="legend-label">新增 (本週)</span></div>
+                <div class="legend-item"><span class="legend-color" style="background-color: #FCA5A5; border-radius: 50%;"></span><span class="legend-label">持續 2 週</span></div>
+                <div class="legend-item"><span class="legend-color" style="background-color: #EF4444; border-radius: 50%;"></span><span class="legend-label">持續 4 週</span></div>
+                <div class="legend-item"><span class="legend-color" style="background-color: #991B1B; border-radius: 50%;"></span><span class="legend-label">持續 7 週</span></div>
+                <div class="legend-item"><span class="legend-color" style="background-color: #5C1616; border-radius: 50%;"></span><span class="legend-label">持續 10+ 週</span></div>
+                <div class="legend-item"><span class="legend-color" style="background-color: #999999; border-radius: 50%;"></span><span class="legend-label">消失</span></div>
+            </div>
+        </div>
+        
         <!-- 熱力圖圖例 -->
         <div id="heatmapLegend" class="heatmap-legend" style="display: none;">
             <div class="legend-title">count</div>
@@ -479,7 +492,7 @@
                     <span class="stat-value" id="newCount">-</span>
                 </div>
                 <div class="stat-row">
-                    <span class="stat-label">已下架</span>
+                    <span class="stat-label">消失房源</span>
                     <span class="stat-value" id="deletedCount">-</span>
                 </div>
                 <div class="stat-row">
@@ -874,9 +887,9 @@
             // 更新統計信息
             const summary = data.summary;
             document.getElementById('weekId').textContent = data.query.week_id || '-';
-            document.getElementById('totalCount').textContent = summary.total_properties;
-            document.getElementById('newCount').textContent = summary.new_properties;
-            document.getElementById('deletedCount').textContent = summary.deleted_properties;
+            document.getElementById('totalCount').textContent = summary.available_properties || summary.total_properties;
+            document.getElementById('newCount').textContent = summary.new_properties || 0;
+            document.getElementById('deletedCount').textContent = summary.inactive_properties || 0;
             document.getElementById('avgRent').textContent = `$${Math.round(summary.avg_rent_all).toLocaleString()}`;
             document.getElementById('avgArea').textContent = `${summary.avg_area.toFixed(1)} 坪`;
             
@@ -917,41 +930,35 @@
         // 獲取標記圖標 - 根據房源狀態變色
         function getMarkerIcon(prop) {
             let color;
+            const weeksActive = prop.weeks_active || 1;
             
             // 根據房源狀態決定顏色
-            if (prop.status === 'deleted') {
-                // 本週下架：灰色
+            if (prop.status === 'inactive') {
+                // 消失案件：灰色
                 color = '#999999';
+            } else if (prop.status === 'new') {
+                // 新增案件（本週首次出現）：綠色
+                color = '#22C55E';
             } else if (prop.status === 'active') {
-                // 根據上榜時間決定紅色深度
-                const currentWeek = parseInt(versions[currentVersionIndex]?.week_id) || 2602;
-                const uploadWeek = parseInt(prop.upload_week) || currentWeek;
-                const weeksDiff = currentWeek - uploadWeek;
-                
-                if (weeksDiff <= 0) {
-                    // 本週新增：亮紅色
-                    color = '#FF0000';
-                } else if (weeksDiff >= 49) {
-                    // 經過 49 週以上：紅黑色（最深）
-                    color = '#1a0000';
-                } else {
-                    // 中間漸變
-                    const colors = [
-                        '#FF0000', '#FF0A0A', '#FF1414', '#FF1E1E', '#FF2828',
-                        '#FF3232', '#FF3C3C', '#FF4646', '#FF5050', '#FF5A5A',
-                        '#FF6464', '#FF6E6E', '#FF7878', '#FF8282', '#FF8C8C',
-                        '#FF9696', '#FFA0A0', '#FFAAAA', '#FFB4B4', '#FFBEBE',
-                        '#FFC8C8', '#FFD2D2', '#FFDBDB', '#FFE5E5', '#FFEFEF',
-                        '#F5E5E5', '#EBCBCB', '#E1B1B1', '#D79797', '#CD7D7D',
-                        '#C36363', '#B94949', '#AF2F2F', '#A51515', '#9B0B0B',
-                        '#910101', '#870000', '#7D0000', '#730000', '#690000',
-                        '#5F0000', '#550000', '#4B0000', '#410000', '#370000',
-                        '#2D0000', '#230000', '#190000', '#0F0000', '#1a0000'
-                    ];
-                    color = colors[Math.min(weeksDiff, 49)];
-                }
+                // 持續案件：根據持續週數決定紅色深度
+                // weeks_active = 2 表示第 2 週（淡紅）
+                // weeks_active = 10+ 表示第 10 週以上（深紅）
+                const redColors = [
+                    '#FCA5A5',  // weeks_active = 2 (淡紅)
+                    '#F87171',  // weeks_active = 3
+                    '#EF4444',  // weeks_active = 4
+                    '#DC2626',  // weeks_active = 5
+                    '#B91C1C',  // weeks_active = 6
+                    '#991B1B',  // weeks_active = 7
+                    '#7F1D1D',  // weeks_active = 8
+                    '#6B1A1A',  // weeks_active = 9
+                    '#5C1616',  // weeks_active = 10+ (深紅)
+                ];
+                const colorIndex = Math.min(weeksActive - 2, redColors.length - 1);
+                color = redColors[Math.max(0, colorIndex)];
             } else {
-                color = '#FF0000';
+                // 預設：綠色（當作新增處理）
+                color = '#22C55E';
             }
             
             const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12">
