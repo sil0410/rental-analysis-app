@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>租屋行情分析 - Google Maps 版 v8.2</title>
+    <title>租屋行情分析 - Google Maps 版 v8.3</title>
     
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC2wnsfWaDK9BA5wEkf04rFAon2yQgttlk&libraries=places,geometry,visualization"></script>
     
@@ -42,7 +42,7 @@
         
         /* 主容器 */
         .main-container { display: flex; height: calc(100vh - 160px); }
-        #map { flex: 1; height: 100%; }
+        #map { flex: 1; height: 100%; position: relative; } /* 確保 relative 定位給 SVG 用 */
         
         /* 右側面板 */
         .right-panel { width: 350px; background: white; border-left: 1px solid #ddd; overflow-y: auto; padding: 20px; display: none; }
@@ -68,7 +68,7 @@
 </head>
 <body>
     <div class="navbar">
-        <h1>🏠 租屋行情分析 - Google Maps 版 v8.2</h1>
+        <h1>🏠 租屋行情分析 - Google Maps 版 v8.3</h1>
         <div class="navbar-right">
             <span id="statusText" class="navbar-status">載入中...</span>
             <button class="btn-admin" id="adminBtn" onclick="showAdminMenu()">⚙️ 管理</button>
@@ -216,8 +216,7 @@
         
         // ============ 函式定義 ============
         
-        // 1. 設定熱力圖模式 (使用者報錯的函式)
-        // 將其移至最上方確保已被讀取
+        // 1. 設定熱力圖模式
         function setHeatmapMode(mode) {
             heatmapMode = mode;
             
@@ -372,6 +371,8 @@
             const detailedAddress = document.getElementById('address').value;
             let address = (city || '') + (district || '') + (detailedAddress || '');
             
+            const distanceMax = parseInt(document.getElementById('distanceMax').value) || 5000;
+            
             if (!address) { alert('請選擇縣市和區域'); return; }
 
             // 確保傳遞 week_id
@@ -399,15 +400,86 @@
                         title: '搜尋中心',
                         icon: 'https://maps.google.com/mapfiles/ms/icons/red-pushpin.png'
                     });
+                    
+                    // ============================================
+                    // 恢復：創建搜尋範圍圓圈 (SVG 覆蓋層)
+                    // ============================================
+                    if (searchRadiusCircle) {
+                        searchRadiusCircle.remove();
+                    }
+                    
+                    function createSearchRadiusCircle(centerLat, centerLng, radiusMeters) {
+                        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                        svg.style.position = 'absolute';
+                        svg.style.top = '0';
+                        svg.style.left = '0';
+                        svg.style.width = '100%';
+                        svg.style.height = '100%';
+                        svg.style.pointerEvents = 'none';
+                        svg.style.zIndex = '1';
+                        
+                        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                        circle.setAttribute('fill', 'rgba(67, 160, 71, 0.1)');
+                        circle.setAttribute('stroke', '#43a047');
+                        circle.setAttribute('stroke-width', '2');
+                        circle.setAttribute('stroke-dasharray', '5,5');
+                        svg.appendChild(circle);
+                        
+                        // 添加到地圖容器
+                        const mapDiv = document.getElementById('map');
+                        mapDiv.appendChild(svg);
+                        
+                        // 更新圓圈位置的函數
+                        function updateCirclePosition() {
+                            const bounds = map.getBounds();
+                            if (!bounds) return;
+                            
+                            const mapRect = mapDiv.getBoundingClientRect();
+                            const ne = bounds.getNorthEast();
+                            const sw = bounds.getSouthWest();
+                            
+                            const latRange = ne.lat() - sw.lat();
+                            const lngRange = ne.lng() - sw.lng();
+                            
+                            const cx = ((centerLng - sw.lng()) / lngRange) * mapRect.width;
+                            const cy = ((ne.lat() - centerLat) / latRange) * mapRect.height;
+                            
+                            // 簡單估算半徑像素
+                            const radiusInDegrees = radiusMeters / 111000;
+                            const radiusInPixels = (radiusInDegrees / latRange) * mapRect.height;
+                            
+                            circle.setAttribute('cx', cx);
+                            circle.setAttribute('cy', cy);
+                            circle.setAttribute('r', radiusInPixels);
+                        }
+                        
+                        updateCirclePosition();
+                        
+                        const listeners = [
+                            google.maps.event.addListener(map, 'bounds_changed', updateCirclePosition),
+                            google.maps.event.addListener(map, 'zoom_changed', updateCirclePosition),
+                            google.maps.event.addListener(map, 'center_changed', updateCirclePosition)
+                        ];
+                        
+                        return {
+                            remove: function() {
+                                svg.remove();
+                                listeners.forEach(l => google.maps.event.removeListener(l));
+                            }
+                        };
+                    }
+                    
+                    searchRadiusCircle = createSearchRadiusCircle(lat, lng, distanceMax);
+                    // ============================================
 
                     // 呼叫後端 API
                     const params = new URLSearchParams({
                         address: address, city: city, district: district,
                         distance_min: document.getElementById('distanceMin').value || 0,
-                        distance_max: document.getElementById('distanceMax').value || 5000,
+                        distance_max: distanceMax,
                         building_type: document.getElementById('buildingType').value,
                         room_type: document.getElementById('roomType').value,
-                        week_id: weekId, // 關鍵修正
+                        week_id: weekId,
                         lat: lat, lng: lng
                     });
 
