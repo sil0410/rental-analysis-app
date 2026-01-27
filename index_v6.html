@@ -3,15 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>租屋行情分析 - Google Maps 版 v6.0</title>
+    <title>租屋行情分析 - Google Maps 版 v8.1</title>
     
-    <!-- Google Maps API -->
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC2wnsfWaDK9BA5wEkf04rFAon2yQgttlk&libraries=places,geometry,visualization"></script>
     
-    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
-    <!-- deck.gl for Heatmap (replacing deprecated Google Maps HeatmapLayer) -->
     <script src="https://unpkg.com/deck.gl@latest/dist.min.js"></script>
     
     <style>
@@ -338,9 +335,8 @@
     </style>
 </head>
 <body>
-    <!-- 頂部導航欄 -->
     <div class="navbar">
-        <h1>🏠 租屋行情分析 - Google Maps 版 v6.0</h1>
+        <h1>🏠 租屋行情分析 - Google Maps 版 v8.1</h1>
         <div class="navbar-right">
             <span id="statusText" class="navbar-status">載入中...</span>
             <button class="btn-admin" id="adminBtn" onclick="showAdminMenu()">⚙️ 管理</button>
@@ -351,7 +347,6 @@
         </div>
     </div>
     
-    <!-- 搜尋欄 -->
     <div class="search-bar">
         <div class="search-group">
             <label for="citySelect">📍 縣市</label>
@@ -404,7 +399,6 @@
         
         <button class="btn-search" id="searchBtn" onclick="performSearch()">搜尋分析</button>
         
-        <!-- 熱力圖模式（房源密度） -->
         <div class="search-group" style="margin-top: 15px; border-top: 1px solid #ddd; padding-top: 15px;">
             <label>🔥 熱力圖模式</label>
             <div style="display: flex; gap: 8px;">
@@ -420,7 +414,6 @@
         </div>
     </div>
     
-    <!-- 控制欄 -->
     <div class="control-bar">
         <select id="versionSelect" onchange="onVersionChange()" class="btn-control">
             <option value="">載入中...</option>
@@ -430,12 +423,9 @@
         <button class="btn-control" id="nextBtn" onclick="nextVersion()">下一週 ➡️</button>
     </div>
     
-    <!-- 主容器 -->
     <div class="main-container">
-        <!-- 地圖 -->
         <div id="map"></div>
         
-        <!-- 房源狀態圖例 -->
         <div id="statusLegend" style="position: absolute; bottom: 30px; left: 20px; background: white; padding: 10px 15px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.15); z-index: 100; font-size: 12px;">
             <div style="font-weight: 600; margin-bottom: 8px; text-align: center; border-bottom: 1px solid #eee; padding-bottom: 5px;">房源狀態</div>
             <div style="display: flex; flex-direction: column; gap: 5px;">
@@ -448,34 +438,6 @@
             </div>
         </div>
         
-        <!-- 熱力圖圖例 -->
-        <div id="heatmapLegend" class="heatmap-legend" style="display: none;">
-            <div class="legend-title">count</div>
-            <div class="legend-items">
-                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">96-98</span></div>
-                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">91-95</span></div>
-                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">86-90</span></div>
-                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">81-85</span></div>
-                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">76-80</span></div>
-                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">71-75</span></div>
-                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">66-70</span></div>
-                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">61-65</span></div>
-                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">56-60</span></div>
-                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">51-55</span></div>
-                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">46-50</span></div>
-                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">41-45</span></div>
-                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">36-40</span></div>
-                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">31-35</span></div>
-                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">26-30</span></div>
-                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">21-25</span></div>
-                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">16-20</span></div>
-                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">11-15</span></div>
-                <div class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span><span class="legend-label">6-10</span></div>
-                <div class="legend-item"><span class="legend-color" style="background-color: #0000ff;"></span><span class="legend-label">1-5</span></div>
-            </div>
-        </div>
-        
-        <!-- 右側面板 -->
         <div class="right-panel">
             <div class="panel-section">
                 <h3>區域統計</h3>
@@ -525,15 +487,13 @@
         </div>
     </div>
     
-    <!-- 房源詳情彈窗 -->
     <div class="property-popup" id="propertyPopup">
         <div class="popup-header">
             <span id="popupTitle">房源詳情</span>
             <button class="popup-close" onclick="closePropertyPopup()">×</button>
         </div>
         <div class="popup-content" id="popupContent">
-            <!-- 動態生成 -->
-        </div>
+            </div>
     </div>
     
     <script>
@@ -648,13 +608,17 @@
                 updateVersionSelector();
                 
                 if (versions.length > 0) {
-                    currentVersionIndex = versions.length - 1;
-                    onVersionChange();
+                    currentVersionIndex = 0; // 預設選擇第一個（最新的）
+                    updateVersionSelector(); // 更新 UI 選擇
+                    onVersionChange(); // 觸發搜尋
+                } else {
+                    document.getElementById('statusText').textContent = '無資料';
                 }
                 
             } catch (error) {
                 console.error('加載版本失敗:', error);
                 document.getElementById('versionSelect').innerHTML = '<option value="">加載失敗</option>';
+                document.getElementById('statusText').textContent = '連線錯誤';
             }
         }
         
@@ -698,7 +662,15 @@
         // 版本變更
         function onVersionChange() {
             const select = document.getElementById('versionSelect');
+            if (select.value === "") return;
+            
             currentVersionIndex = parseInt(select.value);
+            
+            // 更新狀態顯示
+            if (versions[currentVersionIndex]) {
+                 document.getElementById('statusText').textContent = `檢視: ${versions[currentVersionIndex].week_id}`;
+            }
+
             // 使用默認地址執行搜索
             performSearchWithDefaultAddress();
         }
@@ -740,6 +712,12 @@
             const distanceMax = parseInt(document.getElementById('distanceMax').value) || 5000;
             const buildingType = document.getElementById('buildingType').value;
             const roomType = document.getElementById('roomType').value;
+
+            // 重要修正：獲取選定的 week_id
+            let weekId = '';
+            if (versions.length > 0 && currentVersionIndex >= 0 && versions[currentVersionIndex]) {
+                weekId = versions[currentVersionIndex].week_id;
+            }
             
             if (!address) {
                 alert('請選擇縣市和區域');
@@ -849,7 +827,7 @@
                     
                     searchRadiusCircle = createSearchRadiusCircle(lat, lng, distanceMax);
                     
-                    // 查詢 API（傳遞座標以確保前後端一致）
+                    // 查詢 API（修正：已加入 week_id）
                     const params = new URLSearchParams({
                         address: address,
                         city: city,
@@ -858,6 +836,7 @@
                         distance_max: distanceMax,
                         building_type: buildingType,
                         room_type: roomType,
+                        week_id: weekId, // 這裡確保傳遞選單中的週次
                         lat: lat,
                         lng: lng
                     });
@@ -1331,32 +1310,15 @@
         
         async function playNext() {
             if (!animationRunning) return;
-            if (currentVersionIndex < versions.length - 1) {
-                currentVersionIndex++;
-                updateVersionSelector();
-                await onVersionChange();
-                setTimeout(playNext, 2000);
-            } else {
-                animationRunning = false;
-                document.getElementById('playBtn').textContent = '▶️ 播放';
-            }
-        }
-        
-        function previousVersion() {
+            // 播放邏輯：如果是從舊的開始播 (index 比較大) 往新的播 (index 比較小)
+            // 這裡的版本是按日期降序排列 (index 0 是最新)，所以如果要看時間演進，應該是 index 減少
+            // 但目前的 previousVersion/nextVersion 邏輯是 index++ 是下一週?
+            // 檢查版本載入： ORDER BY week_id DESC -> Index 0 是最新
+            // 所以「下一週」(時間前進) 應該是 Index 減少 (走向最新的)
+            // 不過您的按鈕邏輯是： nextVersion -> currentVersionIndex++ (往舊的走?)
+            
+            // 修正動畫邏輯：從舊到新播放 (Index 遞減)
             if (currentVersionIndex > 0) {
                 currentVersionIndex--;
                 updateVersionSelector();
-                onVersionChange();
-            }
-        }
-        
-        function nextVersion() {
-            if (currentVersionIndex < versions.length - 1) {
-                currentVersionIndex++;
-                updateVersionSelector();
-                onVersionChange();
-            }
-        }
-    </script>
-</body>
-</html>
+                await onVersionChange

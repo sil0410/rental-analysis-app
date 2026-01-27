@@ -1,8 +1,9 @@
 """
-租屋行情分析系統 - 版本控制 API v8.0
+租屋行情分析系統 - 版本控制 API v8.1 (Fixed)
+修正：自動鎖定最新週次，解決查詢卡住問題
 支持四象限分類（建物類型 x 房型大類）按需載入 CSV
 支持 Google Drive 分層資料夾管理
-新增：本地快取機制，大幅提升效能
+支持本地快取機制
 """
 
 import sqlite3
@@ -22,7 +23,7 @@ import pandas as pd
 from io import BytesIO
 
 # 初始化 FastAPI
-app = FastAPI(title="租屋行情分析 API v8.0")
+app = FastAPI(title="租屋行情分析 API v8.1 (Fixed)")
 
 # 添加 CORS 中間件
 app.add_middleware(
@@ -817,7 +818,8 @@ def get_all_week_ids() -> List[str]:
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("SELECT DISTINCT week_id FROM csv_index WHERE week_id IS NOT NULL ORDER BY week_id DESC")
+        # 修正：過濾空值和無效值
+        cursor.execute("SELECT DISTINCT week_id FROM csv_index WHERE week_id IS NOT NULL AND week_id != '' ORDER BY week_id DESC")
         week_ids = [row[0] for row in cursor.fetchall()]
         conn.close()
         return week_ids
@@ -1061,6 +1063,16 @@ async def analysis_v4(
 ):
     """分析 API - 按需載入指定條件的數據"""
     try:
+        # 修正開始：自動處理 week_id 預設值
+        if not week_id:
+            available_weeks = get_all_week_ids()
+            if available_weeks:
+                week_id = available_weeks[0]
+                print(f"ℹ️ 前端未指定週次，自動鎖定最新版本: {week_id}")
+            else:
+                week_id = get_week_id()
+        # 修正結束
+
         if lat is not None and lng is not None and lat != 0 and lng != 0:
             query_lat, query_lon = lat, lng
         else:
