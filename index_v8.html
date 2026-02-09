@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>租屋行情分析 - Google Maps 版 v8.3</title>
+    <title>租屋行情分析 - Google Maps 版 v8.4</title>
     
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC2wnsfWaDK9BA5wEkf04rFAon2yQgttlk&libraries=places,geometry,visualization"></script>
     
@@ -64,11 +64,65 @@
         .toggle-switch::after { content: ''; position: absolute; width: 16px; height: 16px; background: white; border-radius: 50%; top: 2px; left: 2px; transition: left 0.3s; }
         .toggle-switch.active { background: #43a047; }
         .toggle-switch.active::after { left: 22px; }
+
+        /* ============ 手機版 RWD ============ */
+        @media screen and (max-width: 768px) {
+            /* 導航欄 */
+            .navbar { padding: 10px 12px; flex-wrap: wrap; gap: 8px; }
+            .navbar h1 { font-size: 15px; width: 100%; }
+            .navbar-right { width: 100%; justify-content: space-between; }
+
+            /* 搜尋欄 */
+            .search-bar { padding: 10px 12px; gap: 8px; flex-direction: column; align-items: stretch; }
+            .search-group { width: 100%; }
+            .search-group label { min-width: 60px; font-size: 13px; }
+            .search-bar select, .search-bar input { flex: 1; min-width: 0; font-size: 13px; padding: 8px 10px; }
+
+            /* 距離輸入框 - 關鍵修正 */
+            .search-group input[type="number"] { width: 70px; flex: none; }
+
+            /* 搜尋按鈕全寬 */
+            .btn-search { width: 100%; padding: 12px; font-size: 15px; }
+
+            /* 熱力圖控制區 */
+            .search-group[style*="border-top"] { margin-top: 0 !important; }
+
+            /* 控制欄 */
+            .control-bar { padding: 8px 12px; gap: 6px; flex-wrap: wrap; justify-content: center; }
+            .control-bar select, .control-bar button { font-size: 12px; padding: 6px 8px; }
+            .control-bar select { max-width: 120px; }
+            .control-bar .btn-control { flex: none; white-space: nowrap; }
+
+            /* 主容器 - 改為垂直排列 */
+            .main-container { flex-direction: column; height: auto; min-height: calc(100vh - 200px); }
+
+            /* 地圖 */
+            #map { width: 100%; height: 55vh; min-height: 350px; flex: none; }
+
+            /* 右側面板 - 移到地圖下方 */
+            .right-panel { width: 100% !important; border-left: none; border-top: 1px solid #ddd; position: relative; max-height: none; overflow-y: visible; }
+
+            /* 房源狀態圖例 */
+            #statusLegend { bottom: 10px; left: 10px; padding: 6px 8px; font-size: 11px; }
+
+            /* 房源彈窗 - 手機版全寬底部彈出 */
+            .property-popup { position: fixed; bottom: 0; left: 0; right: 0; width: 100%; border-radius: 12px 12px 0 0; max-height: 60vh; overflow-y: auto; }
+
+            /* 圖表容器 */
+            .chart-container { height: 180px; }
+        }
+
+        /* 小螢幕手機（寬度 < 400px） */
+        @media screen and (max-width: 400px) {
+            .navbar h1 { font-size: 13px; }
+            .search-group input[type="number"] { width: 60px; }
+            .search-group label { min-width: 50px; font-size: 12px; }
+        }
     </style>
 </head>
 <body>
     <div class="navbar">
-        <h1>🏠 租屋行情分析 - Google Maps 版 v8.3</h1>
+        <h1>🏠 租屋行情分析 - Google Maps 版 v8.4</h1>
         <div class="navbar-right">
             <span id="statusText" class="navbar-status">載入中...</span>
             <button class="btn-admin" id="adminBtn" onclick="showAdminMenu()">⚙️ 管理</button>
