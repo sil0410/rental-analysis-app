@@ -264,6 +264,7 @@
         let heatmapMode = 'density'; 
         let heatmapRadius = 25;
         const ADVANCED_PASSWORD = "1234";
+        const FIRST_USE_DATA_KEY = "rentalAnalysisV8DataDownloaded";
         
         // 地區數據緩存
         const districtsData = {};
@@ -295,11 +296,46 @@
         }
 
         // 2. 初始化流程
-        window.addEventListener('load', () => {
+        window.addEventListener('load', bootstrapApp);
+
+        async function bootstrapApp() {
             initMap();
-            loadDistricts();
-            loadVersions();
-        });
+            setAdvancedMode(true);
+            await ensureFirstUseDataDownloaded();
+            await loadDistricts();
+            await loadVersions();
+        }
+
+        async function ensureFirstUseDataDownloaded() {
+            let alreadyDownloaded = false;
+            try {
+                alreadyDownloaded = localStorage.getItem(FIRST_USE_DATA_KEY) === "true";
+            } catch (error) {
+                console.warn("Unable to read first-use data flag", error);
+            }
+
+            if (alreadyDownloaded) return;
+
+            const statusText = document.getElementById('statusText');
+            if (statusText) statusText.textContent = '首次使用，正在同步資料...';
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/rescan-csv`, { method: 'POST' });
+                const data = await response.json();
+                if (!response.ok || data.status === 'error') {
+                    throw new Error(data.message || '資料同步失敗');
+                }
+
+                try {
+                    localStorage.setItem(FIRST_USE_DATA_KEY, "true");
+                } catch (error) {
+                    console.warn("Unable to save first-use data flag", error);
+                }
+            } catch (error) {
+                console.warn("First-use data sync failed; continuing with existing index", error);
+                if (statusText) statusText.textContent = '資料同步失敗，使用現有資料';
+            }
+        }
         
         function initMap() {
             try {
@@ -684,17 +720,22 @@
 
         // 5. 進階模式與動畫
         function showPasswordPrompt() {
-            if (advancedMode) { toggleAdvancedMode(); return; }
-            const pwd = prompt('請輸入 4 位數字密碼 (預設 1234):');
-            if (pwd === ADVANCED_PASSWORD) toggleAdvancedMode();
-            else if (pwd !== null) alert('密碼錯誤');
+            toggleAdvancedMode();
         }
 
         function toggleAdvancedMode() {
-            advancedMode = !advancedMode;
-            document.getElementById('advancedToggle').classList.toggle('active');
-            document.querySelector('.right-panel').style.display = advancedMode ? 'block' : 'none';
-            document.getElementById('advancedHeatmapControls').style.display = advancedMode ? 'block' : 'none';
+            setAdvancedMode(!advancedMode);
+        }
+
+        function setAdvancedMode(enabled) {
+            advancedMode = enabled;
+            document.getElementById('advancedToggle').classList.toggle('active', enabled);
+            document.querySelector('.right-panel').style.display = enabled ? 'block' : 'none';
+            document.getElementById('advancedHeatmapControls').style.display = enabled ? 'block' : 'none';
+
+            if (currentData) {
+                updateHeatmap(currentData);
+            }
         }
 
         function toggleAnimation() {
