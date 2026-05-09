@@ -143,7 +143,7 @@
         
         <div class="search-group">
             <label for="districtSelect">區域</label>
-            <select id="districtSelect">
+            <select id="districtSelect" onchange="prefetchSelectedCsv()">
                 <option value="">選擇區域</option>
             </select>
         </div>
@@ -155,7 +155,7 @@
         
         <div class="search-group">
             <label for="buildingType">建築類型</label>
-            <select id="buildingType">
+            <select id="buildingType" onchange="prefetchSelectedCsv()">
                 <option value="全部">全部</option>
                 <option value="公寓">公寓</option>
                 <option value="電梯大樓">電梯大樓</option>
@@ -164,7 +164,7 @@
         
         <div class="search-group">
             <label for="roomType">房型</label>
-            <select id="roomType">
+            <select id="roomType" onchange="prefetchSelectedCsv()">
                 <option value="全部">全部</option>
                 <option value="套房">套房</option>
                 <option value="2房">2房</option>
@@ -269,6 +269,7 @@
         const TITLE_LOGIN_KEY = "rentalAnalysisTitleUnlocked";
         let titleUnlocked = false;
         let activePopupProperty = null;
+        const prefetchCacheKeys = new Set();
         
         // 地區數據緩存
         const districtsData = {};
@@ -480,13 +481,14 @@
             }
         }
 
-        function onVersionChange() {
+        async function onVersionChange() {
             const select = document.getElementById('versionSelect');
             if (select.value === "") return;
             currentVersionIndex = parseInt(select.value);
             if (versions[currentVersionIndex]) {
                  document.getElementById('statusText').textContent = `檢視: ${versions[currentVersionIndex].week_id}`;
             }
+            await prefetchSelectedCsv();
             performSearchWithDefaultAddress();
         }
 
@@ -499,7 +501,52 @@
             if (!districtSelect.value) districtSelect.value = '中和區';
             if (!addressInput.value) addressInput.value = '永和路';
             
+            await prefetchSelectedCsv();
             await performSearch();
+        }
+
+        function getSelectedWeekId() {
+            if (versions.length > 0 && currentVersionIndex >= 0 && versions[currentVersionIndex]) {
+                return versions[currentVersionIndex].week_id;
+            }
+            return '';
+        }
+
+        function getPrefetchParams() {
+            return {
+                city: document.getElementById('citySelect').value,
+                district: document.getElementById('districtSelect').value,
+                building_type: document.getElementById('buildingType').value,
+                room_type: document.getElementById('roomType').value,
+                week_id: getSelectedWeekId()
+            };
+        }
+
+        async function prefetchSelectedCsv() {
+            const params = getPrefetchParams();
+            if (!params.city || !params.district || !params.week_id) return;
+
+            const key = JSON.stringify(params);
+            if (prefetchCacheKeys.has(key)) return;
+            prefetchCacheKeys.add(key);
+
+            const statusText = document.getElementById('statusText');
+            const previousStatus = statusText.textContent;
+            statusText.textContent = `預載 ${params.district} ${params.week_id} CSV...`;
+
+            try {
+                const query = new URLSearchParams(params);
+                const response = await fetch(`${API_BASE}/prefetch-csv?${query}`);
+                const data = await response.json();
+                if (!response.ok || data.status === 'error') {
+                    throw new Error(data.detail || data.message || 'prefetch failed');
+                }
+                statusText.textContent = `已預載 ${params.district} ${params.week_id}`;
+            } catch (error) {
+                prefetchCacheKeys.delete(key);
+                console.warn('CSV prefetch failed:', error);
+                statusText.textContent = previousStatus || '預載失敗';
+            }
         }
 
         // 3. 核心搜尋功能
@@ -512,12 +559,10 @@
             const distanceMax = parseInt(document.getElementById('distanceMax').value) || 500;
             
             if (!address) { alert('請選擇縣市和區域'); return; }
+            await prefetchSelectedCsv();
 
             // 確保傳遞 week_id
-            let weekId = '';
-            if (versions.length > 0 && currentVersionIndex >= 0 && versions[currentVersionIndex]) {
-                weekId = versions[currentVersionIndex].week_id;
-            }
+            let weekId = getSelectedWeekId();
 
             try {
                 const geocoder = new google.maps.Geocoder();

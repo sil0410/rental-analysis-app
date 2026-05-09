@@ -1046,6 +1046,15 @@ def process_dataframe(df: pd.DataFrame, city: str, district: str, building_type:
     
     return properties
 
+def get_load_category(room_type: Optional[str] = None, property_category: Optional[str] = None) -> Optional[str]:
+    if room_type == '套房':
+        return '套房'
+    if room_type in ['2房', '3房', '3房以上']:
+        return '住家'
+    if property_category and property_category != '全部':
+        return property_category
+    return None
+
 # ============ API 端點 ============
 
 @app.get("/api/versions")
@@ -1095,6 +1104,48 @@ async def get_available_filters():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/prefetch-csv")
+async def prefetch_csv(
+    city: Optional[str] = None,
+    district: Optional[str] = None,
+    building_type: Optional[str] = None,
+    property_category: Optional[str] = None,
+    room_type: Optional[str] = None,
+    week_id: Optional[str] = None
+):
+    """預先載入選定範圍 CSV 到伺服器快取。"""
+    try:
+        if not district:
+            return {"status": "skipped", "message": "district is required"}
+
+        if not week_id:
+            available_weeks = get_all_week_ids()
+            week_id = available_weeks[0] if available_weeks else get_week_id()
+
+        load_category = get_load_category(room_type, property_category)
+        properties = load_csv_data(
+            city=city,
+            district=district,
+            building_type=building_type,
+            property_category=load_category,
+            week_id=week_id
+        )
+
+        return {
+            "status": "success",
+            "week_id": week_id,
+            "city": city,
+            "district": district,
+            "building_type": building_type,
+            "property_category": load_category,
+            "properties_loaded": len(properties),
+            "data_source": "google_drive" if drive_available else "local"
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/analysis_v4")
 async def analysis_v4(
     address: str,
@@ -1138,13 +1189,7 @@ async def analysis_v4(
                     district = d
                     break
         
-        load_category = None
-        if room_type == '套房':
-            load_category = '套房'
-        elif room_type in ['2房', '3房', '3房以上']:
-            load_category = '住家'
-        elif property_category:
-            load_category = property_category
+        load_category = get_load_category(room_type, property_category)
         
         # 根據區域自動判斷城市（如果未提供）
         if not city:
