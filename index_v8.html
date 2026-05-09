@@ -429,20 +429,34 @@
 
         function formatVersionLabel(version) {
             const weekId = version.week_id || '';
-            const rangeLabel = formatWeekRange(version.upload_date);
+            const rangeLabel = formatWeekRange(weekId);
             return rangeLabel ? `年週 ${weekId} (${rangeLabel})` : `年週 ${weekId}`;
         }
 
-        function formatWeekRange(uploadDate) {
-            if (!uploadDate) return '';
+        function formatWeekRange(weekId) {
+            const match = String(weekId || '').match(/^(\d{2})(\d{2})$/);
+            if (!match) return '';
 
-            const startDate = new Date(`${uploadDate}T00:00:00`);
-            if (Number.isNaN(startDate.getTime())) return '';
+            const year = 2000 + Number(match[1]);
+            const week = Number(match[2]);
+            if (!Number.isInteger(year) || !Number.isInteger(week) || week < 1 || week > 53) return '';
 
+            const startDate = getISOWeekStartDate(year, week);
             const endDate = new Date(startDate);
-            endDate.setDate(startDate.getDate() + 7);
+            endDate.setDate(startDate.getDate() + 6);
 
             return `${formatMonthDay(startDate)}-${formatMonthDay(endDate)}`;
+        }
+
+        function getISOWeekStartDate(year, week) {
+            const jan4 = new Date(year, 0, 4);
+            const jan4Day = jan4.getDay() || 7;
+            const week1Monday = new Date(jan4);
+            week1Monday.setDate(jan4.getDate() - jan4Day + 1);
+
+            const targetMonday = new Date(week1Monday);
+            targetMonday.setDate(week1Monday.getDate() + (week - 1) * 7);
+            return targetMonday;
         }
 
         function formatMonthDay(date) {
