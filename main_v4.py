@@ -12,6 +12,8 @@ import os
 import re
 import time
 import hashlib
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -98,12 +100,13 @@ def get_cache_stats() -> dict:
 # ============ Google Drive 配置 ============
 GOOGLE_DRIVE_FOLDER_NAME = "租屋數據"
 drive_service = None
+drive_credentials = None
 drive_folder_id = None
 drive_available = False
 
 def init_google_drive():
     """初始化 Google Drive API（可選功能）"""
-    global drive_service, drive_folder_id, drive_available
+    global drive_service, drive_credentials, drive_folder_id, drive_available
     
     try:
         # 從環境變數讀取 Google Drive 金鑰
@@ -135,6 +138,7 @@ def init_google_drive():
             key_dict,
             scopes=['https://www.googleapis.com/auth/drive']
         )
+        drive_credentials = credentials
         
         drive_service = build('drive', 'v3', credentials=credentials)
         
@@ -164,9 +168,22 @@ def init_google_drive():
         traceback.print_exc()
         return False
 
-def download_file_from_drive(file_id: str, filename: str) -> Optional[pd.DataFrame]:
+def build_drive_download_service():
+    """建立獨立的 Drive service，供並行下載使用。"""
+    if not drive_credentials:
+        return drive_service
+
+    try:
+        from googleapiclient.discovery import build
+        return build('drive', 'v3', credentials=drive_credentials, cache_discovery=False)
+    except Exception as e:
+        print(f"  ⚠️ 建立 Drive 下載 service 失敗，改用共用 service: {e}")
+        return drive_service
+
+def download_file_from_drive(file_id: str, filename: str, service=None) -> Optional[pd.DataFrame]:
     """從 Google Drive 下載單一檔案（帶快取）"""
-    if not drive_available or not drive_service:
+    active_service = service or drive_service
+    if not drive_available or not active_service:
         print(f"  ⚠️ Google Drive 不可用")
         return None
     
@@ -187,7 +204,7 @@ def download_file_from_drive(file_id: str, filename: str) -> Optional[pd.DataFra
     try:
         from googleapiclient.http import MediaIoBaseDownload
         
-        request = drive_service.files().get_media(fileId=file_id)
+        request = active_service.files().get_media(fileId=file_id)
         file_content = BytesIO()
         downloader = MediaIoBaseDownload(file_content, request)
         
@@ -285,10 +302,20 @@ def get_csv_from_drive(city: str, district: str, building_type: str, property_ca
         
         # 合併所有匹配的 CSV 檔案（使用快取機制）
         all_dfs = []
-        for filename, file_id in results:
-            df = download_file_from_drive(file_id, filename)
-            if df is not None:
-                all_dfs.append(df)
+        max_workers = min(4, len(results))
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(download_file_from_drive, file_id, filename, build_drive_download_service()): filename
+                for filename, file_id in results
+            }
+            for future in as_completed(futures):
+                filename = futures[future]
+                try:
+                    df = future.result()
+                    if df is not None:
+                        all_dfs.append(df)
+                except Exception as e:
+                    print(f"  ⚠️ 並行下載 {filename} 失敗: {e}")
         
         if not all_dfs:
             return None
@@ -386,6 +413,7 @@ async def startup_event():
         # 顯示快取狀態
         cache_stats = get_cache_stats()
         print(f"📦 快取狀態: {cache_stats['total_files']} 個檔案, {cache_stats['total_size_mb']} MB")
+        start_background_cache_warmup()
     except Exception as e:
         print(f"⚠️ 啟動事件錯誤：{e}")
         import traceback
@@ -809,6 +837,53 @@ def get_all_week_ids() -> List[str]:
         return week_ids
     except:
         return []
+
+def warm_latest_week_cache():
+    """在背景預熱最新週 Google Drive CSV 快取，不阻塞服務啟動。"""
+    if not drive_available:
+        return
+
+    try:
+        week_ids = get_all_week_ids()
+        if not week_ids:
+            return
+
+        latest_week = week_ids[0]
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT filename, file_id FROM csv_index
+            WHERE week_id = ? AND source = 'google_drive' AND file_id IS NOT NULL
+        """, (latest_week,))
+        rows = cursor.fetchall()
+        conn.close()
+
+        if not rows:
+            return
+
+        print(f"🔥 背景預熱最新週快取: {latest_week}, {len(rows)} 個檔案")
+        warmed = 0
+        for filename, file_id in rows:
+            cache_path = get_cache_path(file_id)
+            if is_cache_valid(cache_path):
+                continue
+
+            df = download_file_from_drive(file_id, filename)
+            if df is not None:
+                warmed += 1
+
+        print(f"✓ 背景預熱完成: {latest_week}, 新增 {warmed} 個快取檔")
+    except Exception as e:
+        print(f"⚠️ 背景預熱快取失敗: {e}")
+        import traceback
+        traceback.print_exc()
+
+def start_background_cache_warmup():
+    if not drive_available:
+        return
+
+    thread = threading.Thread(target=warm_latest_week_cache, daemon=True)
+    thread.start()
 
 def load_property_ids_for_week(city: str, district: str, building_type: str, property_category: str, week_id: str) -> set:
     """載入指定週次的所有案件編號"""
