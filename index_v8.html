@@ -331,14 +331,10 @@
             if (alreadyDownloaded) return;
 
             const statusText = document.getElementById('statusText');
-            if (statusText) statusText.textContent = '首次使用，正在同步資料...';
+            if (statusText) statusText.textContent = '首次使用，正在載入資料...';
 
             try {
-                const response = await fetch(`${API_BASE}/admin/rescan-csv`, { method: 'POST' });
-                const data = await response.json();
-                if (!response.ok || data.status === 'error') {
-                    throw new Error(data.message || '資料同步失敗');
-                }
+                await fetch(`${API_BASE}/versions`, { cache: 'no-store' });
 
                 try {
                     localStorage.setItem(FIRST_USE_DATA_KEY, "true");
@@ -346,8 +342,8 @@
                     console.warn("Unable to save first-use data flag", error);
                 }
             } catch (error) {
-                console.warn("First-use data sync failed; continuing with existing index", error);
-                if (statusText) statusText.textContent = '資料同步失敗，使用現有資料';
+                console.warn("First-use data preload failed; continuing with normal load", error);
+                if (statusText) statusText.textContent = '資料載入失敗，稍後重試';
             }
         }
         
