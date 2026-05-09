@@ -302,20 +302,10 @@ def get_csv_from_drive(city: str, district: str, building_type: str, property_ca
         
         # 合併所有匹配的 CSV 檔案（使用快取機制）
         all_dfs = []
-        max_workers = min(4, len(results))
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {
-                executor.submit(download_file_from_drive, file_id, filename, build_drive_download_service()): filename
-                for filename, file_id in results
-            }
-            for future in as_completed(futures):
-                filename = futures[future]
-                try:
-                    df = future.result()
-                    if df is not None:
-                        all_dfs.append(df)
-                except Exception as e:
-                    print(f"  ⚠️ 並行下載 {filename} 失敗: {e}")
+        for filename, file_id in results:
+            df = download_file_from_drive(file_id, filename)
+            if df is not None:
+                all_dfs.append(df)
         
         if not all_dfs:
             return None
