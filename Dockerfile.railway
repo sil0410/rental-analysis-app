@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 複製應用文件
 COPY main_v4.py .
 COPY index_v6.html .
+COPY index_v8.html .
 
 # 創建必要的目錄
 RUN mkdir -p /app/data /app/upload
