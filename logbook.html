@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>查詢 Logbook</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: "Microsoft JhengHei", Arial, sans-serif;
+            color: #1f2933;
+            background: #f4f7f5;
+        }
+        header {
+            background: #2f8f3a;
+            color: #fff;
+            padding: 18px 28px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+        }
+        h1 {
+            font-size: 24px;
+            margin: 0;
+            font-weight: 800;
+            letter-spacing: 0;
+        }
+        .token-state {
+            font-size: 14px;
+            opacity: .9;
+        }
+        main {
+            padding: 22px 28px 34px;
+        }
+        .toolbar {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(130px, 1fr));
+            gap: 12px;
+            align-items: end;
+            margin-bottom: 18px;
+        }
+        label {
+            display: block;
+            font-size: 13px;
+            font-weight: 700;
+            color: #45515f;
+            margin-bottom: 6px;
+        }
+        input, select, button {
+            width: 100%;
+            height: 40px;
+            border: 1px solid #cfd8d3;
+            border-radius: 6px;
+            background: #fff;
+            color: #1f2933;
+            font-size: 15px;
+            padding: 0 11px;
+        }
+        button {
+            border: none;
+            background: #2f8f3a;
+            color: #fff;
+            font-weight: 800;
+            cursor: pointer;
+        }
+        button.secondary {
+            background: #fff;
+            color: #2f8f3a;
+            border: 1px solid #2f8f3a;
+        }
+        button:disabled {
+            opacity: .55;
+            cursor: not-allowed;
+        }
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(140px, 1fr));
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+        .metric {
+            background: #fff;
+            border: 1px solid #dce4df;
+            border-radius: 8px;
+            padding: 14px;
+        }
+        .metric strong {
+            display: block;
+            font-size: 26px;
+            color: #236f2e;
+            margin-bottom: 4px;
+        }
+        .metric span {
+            color: #5c6773;
+            font-size: 13px;
+        }
+        .table-wrap {
+            background: #fff;
+            border: 1px solid #dce4df;
+            border-radius: 8px;
+            overflow: auto;
+            max-height: calc(100vh - 285px);
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            min-width: 1280px;
+        }
+        th, td {
+            border-bottom: 1px solid #edf1ee;
+            padding: 10px 12px;
+            text-align: left;
+            font-size: 13px;
+            vertical-align: top;
+            white-space: nowrap;
+        }
+        th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background: #eef6f0;
+            color: #334155;
+            font-size: 12px;
+        }
+        td.address, td.params {
+            white-space: normal;
+            min-width: 220px;
+            max-width: 360px;
+        }
+        .status {
+            margin: 12px 0 0;
+            color: #596579;
+            font-size: 14px;
+        }
+        .error {
+            color: #b42318;
+            font-weight: 700;
+        }
+        @media (max-width: 980px) {
+            header {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+            main { padding: 16px; }
+            .toolbar {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+            .summary {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>查詢 Logbook</h1>
+        <div class="token-state" id="tokenState">讀取中</div>
+    </header>
+    <main>
+        <section class="toolbar">
+            <div>
+                <label for="dateFrom">開始時間</label>
+                <input id="dateFrom" type="date">
+            </div>
+            <div>
+                <label for="dateTo">結束時間</label>
+                <input id="dateTo" type="date">
+            </div>
+            <div>
+                <label for="action">動作</label>
+                <select id="action">
+                    <option value="">全部</option>
+                    <option value="search">正式搜尋</option>
+                    <option value="prefetch">預先下載</option>
+                </select>
+            </div>
+            <div>
+                <label for="district">區域</label>
+                <input id="district" type="text" placeholder="例如 樹林區">
+            </div>
+            <div>
+                <label for="limit">筆數</label>
+                <input id="limit" type="number" min="1" max="5000" value="500">
+            </div>
+            <div>
+                <button id="refreshBtn">重新整理</button>
+            </div>
+            <div>
+                <button id="downloadBtn" class="secondary">下載 CSV</button>
+            </div>
+            <div>
+                <button id="syncBtn" class="secondary">同步到 Drive</button>
+            </div>
+        </section>
+
+        <section class="summary">
+            <div class="metric"><strong id="totalLogs">0</strong><span>總紀錄</span></div>
+            <div class="metric"><strong id="uniqueSessions">0</strong><span>匿名使用者</span></div>
+            <div class="metric"><strong id="uniqueIps">0</strong><span>IP Hash 數</span></div>
+            <div class="metric"><strong id="todayLogs">0</strong><span>今日紀錄</span></div>
+        </section>
+
+        <section class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>時間</th>
+                        <th>動作</th>
+                        <th>區域</th>
+                        <th>週次</th>
+                        <th>地址</th>
+                        <th>距離</th>
+                        <th>類型</th>
+                        <th>結果</th>
+                        <th>耗時</th>
+                        <th>匿名 Session</th>
+                        <th>IP Hash</th>
+                        <th>User-Agent</th>
+                        <th>參數</th>
+                    </tr>
+                </thead>
+                <tbody id="rows"></tbody>
+            </table>
+        </section>
+        <p class="status" id="statusText"></p>
+    </main>
+
+    <script>
+        const API_BASE = "/api";
+        const token = new URLSearchParams(location.search).get("token") || "";
+
+        const els = {
+            tokenState: document.getElementById("tokenState"),
+            dateFrom: document.getElementById("dateFrom"),
+            dateTo: document.getElementById("dateTo"),
+            action: document.getElementById("action"),
+            district: document.getElementById("district"),
+            limit: document.getElementById("limit"),
+            refreshBtn: document.getElementById("refreshBtn"),
+            downloadBtn: document.getElementById("downloadBtn"),
+            syncBtn: document.getElementById("syncBtn"),
+            rows: document.getElementById("rows"),
+            statusText: document.getElementById("statusText"),
+            totalLogs: document.getElementById("totalLogs"),
+            uniqueSessions: document.getElementById("uniqueSessions"),
+            uniqueIps: document.getElementById("uniqueIps"),
+            todayLogs: document.getElementById("todayLogs")
+        };
+
+        function setStatus(message, isError = false) {
+            els.statusText.textContent = message;
+            els.statusText.className = isError ? "status error" : "status";
+        }
+
+        function buildParams(includeLimit = true) {
+            const params = new URLSearchParams({ token });
+            if (includeLimit) params.set("limit", els.limit.value || "500");
+            if (els.dateFrom.value) params.set("date_from", els.dateFrom.value);
+            if (els.dateTo.value) params.set("date_to", `${els.dateTo.value}T23:59:59`);
+            if (els.action.value) params.set("action", els.action.value);
+            if (els.district.value.trim()) params.set("district", els.district.value.trim());
+            return params;
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function renderSummary(summary) {
+            els.totalLogs.textContent = summary.total_logs ?? 0;
+            els.uniqueSessions.textContent = summary.unique_sessions ?? 0;
+            els.uniqueIps.textContent = summary.unique_ip_hashes ?? 0;
+            els.todayLogs.textContent = summary.today_logs ?? 0;
+        }
+
+        function renderRows(entries) {
+            els.rows.innerHTML = entries.map(log => {
+                const distance = [log.distance_min, log.distance_max].filter(v => v !== null && v !== undefined).join("-");
+                const type = [log.building_type, log.room_type].filter(Boolean).join(" / ");
+                const params = JSON.stringify(log.params || {});
+                return `
+                    <tr>
+                        <td>${escapeHtml(log.created_at)}</td>
+                        <td>${escapeHtml(log.action)}</td>
+                        <td>${escapeHtml((log.city || "") + (log.district || ""))}</td>
+                        <td>${escapeHtml(log.week_id)}</td>
+                        <td class="address">${escapeHtml(log.address)}</td>
+                        <td>${escapeHtml(distance)}</td>
+                        <td>${escapeHtml(type)}</td>
+                        <td>${escapeHtml(log.result_count)}</td>
+                        <td>${escapeHtml(log.duration_ms)}ms</td>
+                        <td>${escapeHtml(log.session_id)}</td>
+                        <td>${escapeHtml(log.ip_hash)}</td>
+                        <td>${escapeHtml(log.user_agent)}</td>
+                        <td class="params">${escapeHtml(params)}</td>
+                    </tr>
+                `;
+            }).join("");
+        }
+
+        async function fetchJson(path, options = {}) {
+            const response = await fetch(path, options);
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || data.status === "error") {
+                throw new Error(data.detail || data.message || `HTTP ${response.status}`);
+            }
+            return data;
+        }
+
+        async function refresh() {
+            if (!token) {
+                els.tokenState.textContent = "網址缺少 token";
+                setStatus("請在網址後面加上 ?token=你的LOGBOOK_TOKEN", true);
+                return;
+            }
+
+            els.tokenState.textContent = "Token 已帶入";
+            els.refreshBtn.disabled = true;
+            setStatus("載入中");
+            try {
+                const summary = await fetchJson(`${API_BASE}/logbook/summary?token=${encodeURIComponent(token)}`);
+                renderSummary(summary.summary);
+
+                const entries = await fetchJson(`${API_BASE}/logbook/entries?${buildParams(true)}`);
+                renderRows(entries.entries || []);
+                setStatus(`已載入 ${entries.count || 0} 筆紀錄`);
+            } catch (error) {
+                setStatus(error.message, true);
+            } finally {
+                els.refreshBtn.disabled = false;
+            }
+        }
+
+        function downloadCsv() {
+            if (!token) return;
+            location.href = `${API_BASE}/logbook/export.csv?${buildParams(true)}`;
+        }
+
+        async function syncDrive() {
+            if (!token) return;
+            els.syncBtn.disabled = true;
+            setStatus("同步到 Google Drive 中");
+            try {
+                const result = await fetchJson(`${API_BASE}/logbook/sync-drive?token=${encodeURIComponent(token)}&limit=${encodeURIComponent(els.limit.value || "5000")}`, {
+                    method: "POST"
+                });
+                const file = result.drive_file || {};
+                setStatus(`已同步 ${result.count || 0} 筆到 Drive：${file.filename || ""}`);
+            } catch (error) {
+                setStatus(error.message, true);
+            } finally {
+                els.syncBtn.disabled = false;
+            }
+        }
+
+        els.refreshBtn.addEventListener("click", refresh);
+        els.downloadBtn.addEventListener("click", downloadCsv);
+        els.syncBtn.addEventListener("click", syncDrive);
+        refresh();
+    </script>
+</body>
+</html>
