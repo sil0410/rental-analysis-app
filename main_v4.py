@@ -7,6 +7,7 @@
 """
 
 import sqlite3
+import csv
 import json
 import os
 import re
@@ -17,12 +18,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import math
 import pandas as pd
-from io import BytesIO
+from io import BytesIO, StringIO
 
 # 初始化 FastAPI
 app = FastAPI(title="租屋行情分析 API v8.1 (Fixed)")
@@ -38,6 +40,8 @@ app.add_middleware(
 
 # 數據庫路徑
 DB_PATH = os.path.join(os.path.dirname(__file__), "rental.db")
+LOGBOOK_TOKEN = os.getenv("LOGBOOK_TOKEN") or os.getenv("QUERY_LOG_TOKEN") or ""
+LOGBOOK_DRIVE_FOLDER_NAME = os.getenv("LOGBOOK_DRIVE_FOLDER_NAME", "查詢紀錄")
 
 # Upload 資料夾路徑
 UPLOAD_DIR = None
@@ -464,9 +468,28 @@ def init_database():
             room_type TEXT,
             result_count INTEGER DEFAULT 0,
             duration_ms INTEGER DEFAULT 0,
+            user_agent TEXT,
+            referer TEXT,
+            path TEXT,
+            query_string TEXT,
+            params_json TEXT,
+            error_message TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+    for column_name, column_type in [
+        ("user_agent", "TEXT"),
+        ("referer", "TEXT"),
+        ("path", "TEXT"),
+        ("query_string", "TEXT"),
+        ("params_json", "TEXT"),
+        ("error_message", "TEXT")
+    ]:
+        try:
+            cursor.execute(f"ALTER TABLE query_logs ADD COLUMN {column_name} {column_type}")
+        except:
+            pass
     
     conn.commit()
     conn.close()
@@ -493,6 +516,14 @@ def get_session_id(request: Request) -> str:
     session_id = request.headers.get("x-anonymous-session", "").strip()
     return session_id[:80] if session_id else "anonymous"
 
+def get_request_log_context(request: Request) -> Dict[str, Any]:
+    return {
+        "user_agent": request.headers.get("user-agent", "")[:500],
+        "referer": request.headers.get("referer", "")[:500],
+        "path": str(request.url.path)[:300],
+        "query_string": str(request.url.query)[:2000]
+    }
+
 def log_query(
     request: Request,
     action: str,
@@ -505,17 +536,22 @@ def log_query(
     building_type: Optional[str] = None,
     room_type: Optional[str] = None,
     result_count: int = 0,
-    duration_ms: int = 0
+    duration_ms: int = 0,
+    params: Optional[Dict[str, Any]] = None,
+    error_message: Optional[str] = None
 ) -> None:
     try:
+        context = get_request_log_context(request)
+        params_json = json.dumps(params or {}, ensure_ascii=False)
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO query_logs (
                 session_id, ip_hash, action, city, district, week_id, address,
                 distance_min, distance_max, building_type, room_type,
-                result_count, duration_ms, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                result_count, duration_ms, user_agent, referer, path,
+                query_string, params_json, error_message, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             get_session_id(request),
             get_request_ip_hash(request),
@@ -530,12 +566,24 @@ def log_query(
             room_type,
             result_count,
             duration_ms,
+            context["user_agent"],
+            context["referer"],
+            context["path"],
+            context["query_string"],
+            params_json,
+            error_message,
             datetime.now().isoformat()
         ))
         conn.commit()
         conn.close()
     except Exception as e:
         print(f"⚠️ 查詢紀錄寫入失敗: {e}")
+
+def verify_logbook_token(token: Optional[str]) -> None:
+    if not LOGBOOK_TOKEN:
+        raise HTTPException(status_code=503, detail="LOGBOOK_TOKEN is not configured")
+    if token != LOGBOOK_TOKEN:
+        raise HTTPException(status_code=403, detail="Invalid logbook token")
 
 def verify_admin_password(password: Optional[str]) -> None:
     if password != "1124":
@@ -1223,7 +1271,16 @@ async def prefetch_csv(
             building_type=building_type,
             room_type=room_type,
             result_count=len(properties),
-            duration_ms=duration_ms
+            duration_ms=duration_ms,
+            params={
+                "city": city,
+                "district": district,
+                "building_type": building_type,
+                "property_category": load_category,
+                "room_type": room_type,
+                "week_id": week_id,
+                "data_source": "google_drive" if drive_available else "local"
+            }
         )
 
         return {
@@ -1389,7 +1446,25 @@ async def analysis_v4(
             building_type=building_type,
             room_type=room_type,
             result_count=len(filtered_properties),
-            duration_ms=duration_ms
+            duration_ms=duration_ms,
+            params={
+                "address": address,
+                "city": city,
+                "district": district,
+                "distance_min": distance_min,
+                "distance_max": distance_max,
+                "building_type": building_type,
+                "property_category": load_category,
+                "room_type": room_type,
+                "week_id": week_id,
+                "lat": query_lat,
+                "lng": query_lon,
+                "available_properties": len(available_properties),
+                "new_properties": len(new_properties),
+                "active_properties": len(active_properties),
+                "inactive_properties": len(inactive_properties),
+                "data_source": "google_drive" if drive_available else "local"
+            }
         )
 
         return {
@@ -1444,10 +1519,262 @@ async def reset_database(request: ResetRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+def resolve_logbook_token(request: Request, token: Optional[str] = None) -> str:
+    return token or request.headers.get("x-logbook-token", "")
+
+def build_logbook_where(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    action: Optional[str] = None,
+    district: Optional[str] = None,
+    session_id: Optional[str] = None
+) -> tuple:
+    where = []
+    values = []
+    if date_from:
+        where.append("created_at >= ?")
+        values.append(date_from)
+    if date_to:
+        where.append("created_at <= ?")
+        values.append(date_to)
+    if action:
+        where.append("action = ?")
+        values.append(action)
+    if district:
+        where.append("district = ?")
+        values.append(district)
+    if session_id:
+        where.append("session_id = ?")
+        values.append(session_id)
+    clause = " WHERE " + " AND ".join(where) if where else ""
+    return clause, values
+
+def row_to_logbook_entry(row) -> Dict[str, Any]:
+    params = {}
+    if row[18]:
+        try:
+            params = json.loads(row[18])
+        except Exception:
+            params = {}
+    return {
+        "id": row[0],
+        "created_at": row[1],
+        "session_id": row[2],
+        "ip_hash": row[3],
+        "action": row[4],
+        "city": row[5],
+        "district": row[6],
+        "week_id": row[7],
+        "address": row[8],
+        "distance_min": row[9],
+        "distance_max": row[10],
+        "building_type": row[11],
+        "room_type": row[12],
+        "result_count": row[13],
+        "duration_ms": row[14],
+        "user_agent": row[15],
+        "referer": row[16],
+        "path": row[17],
+        "params": params,
+        "error_message": row[19]
+    }
+
+def fetch_logbook_entries(
+    limit: int = 500,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    action: Optional[str] = None,
+    district: Optional[str] = None,
+    session_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    limit = max(1, min(limit, 5000))
+    clause, values = build_logbook_where(date_from, date_to, action, district, session_id)
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(f"""
+        SELECT id, created_at, session_id, ip_hash, action, city, district, week_id,
+               address, distance_min, distance_max, building_type, room_type,
+               result_count, duration_ms, user_agent, referer, path, params_json,
+               error_message
+        FROM query_logs
+        {clause}
+        ORDER BY created_at DESC
+        LIMIT ?
+    """, values + [limit])
+    entries = [row_to_logbook_entry(row) for row in cursor.fetchall()]
+    conn.close()
+    return entries
+
+def build_logbook_csv(entries: List[Dict[str, Any]]) -> str:
+    output = StringIO()
+    fieldnames = [
+        "id", "created_at", "session_id", "ip_hash", "action", "city",
+        "district", "week_id", "address", "distance_min", "distance_max",
+        "building_type", "room_type", "result_count", "duration_ms",
+        "user_agent", "referer", "path", "params", "error_message"
+    ]
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    for entry in entries:
+        row = entry.copy()
+        row["params"] = json.dumps(row.get("params") or {}, ensure_ascii=False)
+        writer.writerow(row)
+    return output.getvalue()
+
+def get_or_create_drive_folder(parent_id: str, folder_name: str) -> str:
+    results = drive_service.files().list(
+        q=f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and '{parent_id}' in parents and trashed=false",
+        spaces="drive",
+        fields="files(id, name)",
+        pageSize=1
+    ).execute()
+    files = results.get("files", [])
+    if files:
+        return files[0]["id"]
+    folder = drive_service.files().create(
+        body={
+            "name": folder_name,
+            "mimeType": "application/vnd.google-apps.folder",
+            "parents": [parent_id]
+        },
+        fields="id"
+    ).execute()
+    return folder["id"]
+
+def upload_logbook_csv_to_drive(csv_content: str) -> Dict[str, Any]:
+    if not drive_available or not drive_service or not drive_folder_id:
+        raise HTTPException(status_code=503, detail="Google Drive is not available")
+
+    from googleapiclient.http import MediaIoBaseUpload
+
+    folder_id = get_or_create_drive_folder(drive_folder_id, LOGBOOK_DRIVE_FOLDER_NAME)
+    filename = f"query_logbook_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    media = MediaIoBaseUpload(
+        BytesIO(csv_content.encode("utf-8-sig")),
+        mimetype="text/csv",
+        resumable=False
+    )
+    created = drive_service.files().create(
+        body={"name": filename, "parents": [folder_id]},
+        media_body=media,
+        fields="id, name, webViewLink"
+    ).execute()
+    return {
+        "file_id": created.get("id"),
+        "filename": created.get("name"),
+        "web_view_link": created.get("webViewLink")
+    }
+
+@app.get("/api/logbook/summary")
+async def logbook_summary(request: Request, token: Optional[str] = None):
+    verify_logbook_token(resolve_logbook_token(request, token))
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM query_logs")
+        total_logs = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(DISTINCT session_id) FROM query_logs")
+        unique_sessions = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(DISTINCT ip_hash) FROM query_logs WHERE ip_hash IS NOT NULL AND ip_hash != ''")
+        unique_ip_hashes = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM query_logs WHERE date(created_at) = date('now', 'localtime')")
+        today_logs = cursor.fetchone()[0]
+        cursor.execute("""
+            SELECT action, COUNT(*) AS count, ROUND(AVG(duration_ms), 0) AS avg_duration_ms
+            FROM query_logs GROUP BY action ORDER BY count DESC
+        """)
+        actions = [{"action": row[0], "count": row[1], "avg_duration_ms": int(row[2] or 0)} for row in cursor.fetchall()]
+        cursor.execute("""
+            SELECT district, COUNT(*) AS count FROM query_logs
+            WHERE district IS NOT NULL AND district != ''
+            GROUP BY district ORDER BY count DESC LIMIT 20
+        """)
+        top_districts = [{"district": row[0], "count": row[1]} for row in cursor.fetchall()]
+        cursor.execute("""
+            SELECT week_id, COUNT(*) AS count FROM query_logs
+            WHERE week_id IS NOT NULL AND week_id != ''
+            GROUP BY week_id ORDER BY count DESC LIMIT 20
+        """)
+        top_weeks = [{"week_id": row[0], "count": row[1]} for row in cursor.fetchall()]
+        conn.close()
+        return {
+            "status": "success",
+            "summary": {
+                "total_logs": total_logs,
+                "unique_sessions": unique_sessions,
+                "unique_ip_hashes": unique_ip_hashes,
+                "today_logs": today_logs,
+                "actions": actions,
+                "top_districts": top_districts,
+                "top_weeks": top_weeks
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/logbook/entries")
+async def logbook_entries(
+    request: Request,
+    token: Optional[str] = None,
+    limit: int = 500,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    action: Optional[str] = None,
+    district: Optional[str] = None,
+    session_id: Optional[str] = None
+):
+    verify_logbook_token(resolve_logbook_token(request, token))
+    try:
+        entries = fetch_logbook_entries(limit, date_from, date_to, action, district, session_id)
+        return {"status": "success", "count": len(entries), "entries": entries}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/logbook/export.csv")
+async def logbook_export_csv(
+    request: Request,
+    token: Optional[str] = None,
+    limit: int = 5000,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    action: Optional[str] = None,
+    district: Optional[str] = None,
+    session_id: Optional[str] = None
+):
+    verify_logbook_token(resolve_logbook_token(request, token))
+    try:
+        entries = fetch_logbook_entries(limit, date_from, date_to, action, district, session_id)
+        csv_content = build_logbook_csv(entries)
+        filename = f"query_logbook_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        return Response(
+            content=csv_content.encode("utf-8-sig"),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/logbook/sync-drive")
+async def logbook_sync_drive(
+    request: Request,
+    token: Optional[str] = None,
+    limit: int = 5000
+):
+    verify_logbook_token(resolve_logbook_token(request, token))
+    try:
+        entries = fetch_logbook_entries(limit)
+        csv_content = build_logbook_csv(entries)
+        file_info = upload_logbook_csv_to_drive(csv_content)
+        return {"status": "success", "count": len(entries), "drive_file": file_info}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/admin/query-log-summary")
-async def query_log_summary(password: str):
+async def query_log_summary(request: Request, token: Optional[str] = None):
     """後台查詢紀錄統計。"""
-    verify_admin_password(password)
+    verify_logbook_token(resolve_logbook_token(request, token))
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -1492,9 +1819,9 @@ async def query_log_summary(password: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/admin/query-logs")
-async def query_logs(password: str, limit: int = 100):
+async def query_logs(request: Request, token: Optional[str] = None, limit: int = 100):
     """後台查詢紀錄明細。"""
-    verify_admin_password(password)
+    verify_logbook_token(resolve_logbook_token(request, token))
     try:
         limit = max(1, min(limit, 500))
         conn = sqlite3.connect(DB_PATH)

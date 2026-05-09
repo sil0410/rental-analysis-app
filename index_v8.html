@@ -930,11 +930,10 @@
                 }
             } catch (e) { statusText = '連線失敗'; }
             
-            const choice = prompt(`系統狀態:\n${statusText}\n\n1: 重新掃描 Drive\n2: 清空資料庫\n3: 清除快取\n4: 查看查詢紀錄`);
+            const choice = prompt(`系統狀態:\n${statusText}\n\n1: 重新掃描 Drive\n2: 清空資料庫\n3: 清除快取`);
             if (choice === '1') await adminAction('rescan-csv', '掃描完成');
             else if (choice === '2') await adminReset();
             else if (choice === '3') await adminAction('clear-cache', '快取已清除');
-            else if (choice === '4') await showQueryLogs();
         }
 
         async function adminAction(endpoint, successMsg) {
@@ -956,40 +955,6 @@
                 if(res.ok) { alert('✅ 重置成功'); location.reload(); }
                 else alert('❌ 失敗');
             } catch(e) { alert('❌ 錯誤'); }
-        }
-
-        async function showQueryLogs() {
-            const pwd = prompt('管理密碼:');
-            if (pwd !== ADVANCED_PASSWORD) return alert('密碼錯誤');
-
-            try {
-                const summaryRes = await fetch(`${API_BASE}/admin/query-log-summary?password=${encodeURIComponent(pwd)}`);
-                const summaryData = await summaryRes.json();
-                if (summaryData.status !== 'success') throw new Error(summaryData.detail || '統計載入失敗');
-
-                const logsRes = await fetch(`${API_BASE}/admin/query-logs?password=${encodeURIComponent(pwd)}&limit=20`);
-                const logsData = await logsRes.json();
-                if (logsData.status !== 'success') throw new Error(logsData.detail || '明細載入失敗');
-
-                const s = summaryData.summary;
-                const topDistricts = (s.top_districts || []).map(item => `${item.district}: ${item.count}`).join('\n') || '-';
-                const topWeeks = (s.top_weeks || []).map(item => `${item.week_id}: ${item.count}`).join('\n') || '-';
-                const recentLogs = (logsData.logs || []).map(log => {
-                    return `${log.created_at} | ${log.action} | ${log.city || ''}${log.district || ''} | ${log.week_id || ''} | ${log.result_count}筆 | ${log.duration_ms}ms`;
-                }).join('\n') || '-';
-
-                alert(
-                    `查詢紀錄統計\n` +
-                    `總紀錄: ${s.total_logs}\n` +
-                    `匿名使用者: ${s.unique_sessions}\n` +
-                    `今日紀錄: ${s.today_logs}\n\n` +
-                    `熱門區域:\n${topDistricts}\n\n` +
-                    `熱門週次:\n${topWeeks}\n\n` +
-                    `最近 20 筆:\n${recentLogs}`
-                );
-            } catch (e) {
-                alert('查詢紀錄載入失敗: ' + e.message);
-            }
         }
     </script>
 </body>
