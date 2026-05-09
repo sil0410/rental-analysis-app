@@ -413,7 +413,6 @@ async def startup_event():
         # 顯示快取狀態
         cache_stats = get_cache_stats()
         print(f"📦 快取狀態: {cache_stats['total_files']} 個檔案, {cache_stats['total_size_mb']} MB")
-        start_background_cache_warmup()
     except Exception as e:
         print(f"⚠️ 啟動事件錯誤：{e}")
         import traceback
