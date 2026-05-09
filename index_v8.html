@@ -264,7 +264,11 @@
         let heatmapMode = 'density'; 
         let heatmapRadius = 25;
         const ADVANCED_PASSWORD = "1234";
+        const TITLE_PASSWORD = ADVANCED_PASSWORD;
         const FIRST_USE_DATA_KEY = "rentalAnalysisV8DataDownloaded";
+        const TITLE_LOGIN_KEY = "rentalAnalysisTitleUnlocked";
+        let titleUnlocked = false;
+        let activePopupProperty = null;
         
         // 地區數據緩存
         const districtsData = {};
@@ -300,10 +304,20 @@
 
         async function bootstrapApp() {
             initMap();
+            titleUnlocked = getStoredTitleLogin();
             setAdvancedMode(true);
             await ensureFirstUseDataDownloaded();
             await loadDistricts();
             await loadVersions();
+        }
+
+        function getStoredTitleLogin() {
+            try {
+                return localStorage.getItem(TITLE_LOGIN_KEY) === "true";
+            } catch (error) {
+                console.warn("Unable to read title login state", error);
+                return false;
+            }
         }
 
         async function ensureFirstUseDataDownloaded() {
@@ -411,10 +425,34 @@
             versions.forEach((version, index) => {
                 const option = document.createElement('option');
                 option.value = index;
-                option.textContent = `${version.week_id} (${version.upload_date})`;
+                option.textContent = formatVersionLabel(version);
                 select.appendChild(option);
             });
             if (currentVersionIndex >= 0) select.value = currentVersionIndex;
+        }
+
+        function formatVersionLabel(version) {
+            const weekId = version.week_id || '';
+            const rangeLabel = formatWeekRange(version.upload_date);
+            return rangeLabel ? `年週 ${weekId} (${rangeLabel})` : `年週 ${weekId}`;
+        }
+
+        function formatWeekRange(uploadDate) {
+            if (!uploadDate) return '';
+
+            const startDate = new Date(`${uploadDate}T00:00:00`);
+            if (Number.isNaN(startDate.getTime())) return '';
+
+            const endDate = new Date(startDate);
+            endDate.setDate(startDate.getDate() + 7);
+
+            return `${formatMonthDay(startDate)}-${formatMonthDay(endDate)}`;
+        }
+
+        function formatMonthDay(date) {
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${month}${day}`;
         }
 
         function onCityChange() {
@@ -702,9 +740,14 @@
         }
 
         function showPropertyPopup(prop) {
+            activePopupProperty = prop;
             const popup = document.getElementById('propertyPopup');
+            const titleRow = titleUnlocked
+                ? `<div class="popup-row"><span class="popup-label">標題</span><span class="popup-value">${prop.title}</span></div>`
+                : `<div class="popup-row"><button class="btn-control" onclick="loginForPropertyTitle()">登入查看標題</button></div>`;
+
             let html = `
-                <div class="popup-row"><span class="popup-label">標題</span><span class="popup-value">${prop.title}</span></div>
+                ${titleRow}
                 <div class="popup-row"><span class="popup-label">地址</span><span class="popup-value">${prop.address}</span></div>
                 <div class="popup-row"><span class="popup-label">租金</span><span class="popup-value">$${prop.rent_monthly.toLocaleString()}</span></div>
                 <div class="popup-row"><span class="popup-label">坪數</span><span class="popup-value">${prop.area} 坪</span></div>
@@ -714,8 +757,31 @@
             popup.classList.add('active');
         }
 
+        function loginForPropertyTitle() {
+            const pwd = prompt('請輸入登入密碼:');
+            if (pwd === null) return;
+
+            if (pwd !== TITLE_PASSWORD) {
+                alert('密碼錯誤');
+                return;
+            }
+
+            titleUnlocked = true;
+            try {
+                localStorage.setItem(TITLE_LOGIN_KEY, "true");
+            } catch (error) {
+                console.warn("Unable to save title login state", error);
+            }
+
+            const activePopup = document.getElementById('propertyPopup');
+            if (activePopup.classList.contains('active') && activePopupProperty) {
+                showPropertyPopup(activePopupProperty);
+            }
+        }
+
         function closePropertyPopup() {
             document.getElementById('propertyPopup').classList.remove('active');
+            activePopupProperty = null;
         }
 
         // 5. 進階模式與動畫
