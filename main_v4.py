@@ -668,6 +668,7 @@ def scan_available_csv_files():
                     # 自動下載到 upload 資料夾
                     local_path = os.path.join(upload_dir, filename)
                     record_count = 0
+                    source = 'google_drive'
                     
                     if os.path.exists(local_path):
                         # 檔案已存在，跳過下載
@@ -676,35 +677,18 @@ def scan_available_csv_files():
                         except:
                             record_count = 0
                         skipped_count += 1
+                        source = 'local'
                     else:
-                        # 下載檔案到 upload 資料夾
-                        try:
-                            df = download_file_from_drive(file_id, filename)
-                            if df is not None:
-                                # 從快取複製到 upload 資料夾
-                                cache_path = get_cache_path(file_id)
-                                if os.path.exists(cache_path):
-                                    import shutil
-                                    shutil.copy2(cache_path, local_path)
-                                    record_count = len(df)
-                                    downloaded_count += 1
-                                    print(f"  ⬇️ 已下載: {filename} ({record_count} 筆)")
-                                else:
-                                    # 如果快取不存在，直接儲存 DataFrame
-                                    df.to_csv(local_path, index=False, encoding='utf-8-sig')
-                                    record_count = len(df)
-                                    downloaded_count += 1
-                                    print(f"  ⬇️ 已下載: {filename} ({record_count} 筆)")
-                        except Exception as download_error:
-                            print(f"  ⚠️ 下載失敗: {filename} - {download_error}")
+                        # 啟動時只建立索引，不大量下載 Google Drive 檔案。
+                        # 查詢時會透過 file_id 按需下載並快取。
+                        print(f"  ✓ [drive-index] {filename}: {info['city']}/{info['district']} / {info['building_type']} / {info['property_category']} / {info['week_id']}")
                     
-                    # 索引記錄為本地檔案（因為已下載到 upload）
                     cursor.execute("""
                         INSERT OR REPLACE INTO csv_index 
                         (filename, city, district, building_type, property_category, week_id, record_count, source, file_id, last_scanned)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (filename, info['city'], info['district'], info['building_type'], 
-                          info['property_category'], info['week_id'], record_count, 'local', file_id, datetime.now().isoformat()))
+                          info['property_category'], info['week_id'], record_count, source, file_id, datetime.now().isoformat()))
                     
                     if info['week_id']:
                         week_ids.add(info['week_id'])
