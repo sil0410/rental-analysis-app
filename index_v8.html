@@ -263,7 +263,7 @@
         let deckglOverlay = null;
         let heatmapMode = 'density'; 
         let heatmapRadius = 60;
-        const ADVANCED_PASSWORD = "1234";
+        const ADVANCED_PASSWORD = "1124";
         const TITLE_PASSWORD = ADVANCED_PASSWORD;
         const FIRST_USE_DATA_KEY = "rentalAnalysisV8DataDownloaded";
         const TITLE_LOGIN_KEY = "rentalAnalysisTitleUnlocked";
@@ -878,7 +878,7 @@
 
         async function adminReset() {
             const pwd = prompt('管理密碼:');
-            if(pwd !== '1234') return alert('密碼錯誤');
+            if(pwd !== ADVANCED_PASSWORD) return alert('密碼錯誤');
             try {
                 const res = await fetch(`${API_BASE}/admin/reset-database`, { 
                     method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({password: pwd}) 

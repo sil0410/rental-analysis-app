@@ -1144,7 +1144,7 @@
         }
         
         // 密碼驗證相關變量
-        const ADVANCED_PASSWORD = "1234"; 
+        const ADVANCED_PASSWORD = "1124"; 
         
         function showPasswordPrompt() {
             if (advancedMode) {
@@ -1241,9 +1241,9 @@
         }
         
         async function resetDatabase() {
-            const password = prompt('請輸入管理密碼（預設: 1234）:');
+            const password = prompt('請輸入管理密碼（預設: 1124）:');
             if (password === null) return;
-            if (password !== '1234') {
+            if (password !== ADVANCED_PASSWORD) {
                 alert('密碼錯誤');
                 return;
             }

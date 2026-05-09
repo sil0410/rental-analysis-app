@@ -1208,7 +1208,7 @@ class ResetRequest(BaseModel):
 @app.post("/api/admin/reset-database")
 async def reset_database(request: ResetRequest):
     """重置數據庫並重新掃描 CSV"""
-    if request.password != "1234":
+    if request.password != "1124":
         raise HTTPException(status_code=403, detail="密碼錯誤")
     
     try:
