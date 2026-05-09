@@ -176,7 +176,7 @@
         <div class="search-group">
             <label for="distanceMin">📏 距離</label>
             <input type="number" id="distanceMin" value="0" min="0"> -
-            <input type="number" id="distanceMax" value="5000" min="0"> 米
+            <input type="number" id="distanceMax" value="500" min="0"> 米
         </div>
         
         <button class="btn-search" id="searchBtn" onclick="performSearch()">搜尋分析</button>
@@ -509,7 +509,7 @@
             const detailedAddress = document.getElementById('address').value;
             let address = (city || '') + (district || '') + (detailedAddress || '');
             
-            const distanceMax = parseInt(document.getElementById('distanceMax').value) || 5000;
+            const distanceMax = parseInt(document.getElementById('distanceMax').value) || 500;
             
             if (!address) { alert('請選擇縣市和區域'); return; }
 
