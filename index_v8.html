@@ -267,6 +267,7 @@
         const TITLE_PASSWORD = ADVANCED_PASSWORD;
         const FIRST_USE_DATA_KEY = "rentalAnalysisV8DataDownloaded";
         const TITLE_LOGIN_KEY = "rentalAnalysisTitleUnlocked";
+        const ANON_SESSION_KEY = "rentalAnalysisAnonymousSession";
         let titleUnlocked = false;
         let activePopupProperty = null;
         const prefetchCacheKeys = new Set();
@@ -319,6 +320,25 @@
                 console.warn("Unable to read title login state", error);
                 return false;
             }
+        }
+
+        function getAnonymousSessionId() {
+            try {
+                let sessionId = localStorage.getItem(ANON_SESSION_KEY);
+                if (!sessionId) {
+                    const randomPart = Math.random().toString(36).slice(2);
+                    sessionId = `anon-${Date.now().toString(36)}-${randomPart}`;
+                    localStorage.setItem(ANON_SESSION_KEY, sessionId);
+                }
+                return sessionId;
+            } catch (error) {
+                console.warn("Unable to use anonymous session storage", error);
+                return "anonymous";
+            }
+        }
+
+        function getSessionHeaders() {
+            return { "X-Anonymous-Session": getAnonymousSessionId() };
         }
 
         async function ensureFirstUseDataDownloaded() {
@@ -536,7 +556,9 @@
 
             try {
                 const query = new URLSearchParams(params);
-                const response = await fetch(`${API_BASE}/prefetch-csv?${query}`);
+                const response = await fetch(`${API_BASE}/prefetch-csv?${query}`, {
+                    headers: getSessionHeaders()
+                });
                 const data = await response.json();
                 if (!response.ok || data.status === 'error') {
                     throw new Error(data.detail || data.message || 'prefetch failed');
@@ -666,7 +688,9 @@
                         lat: lat, lng: lng
                     });
 
-                    const response = await fetch(`${API_BASE}/analysis_v4?${params}`);
+                    const response = await fetch(`${API_BASE}/analysis_v4?${params}`, {
+                        headers: getSessionHeaders()
+                    });
                     const data = await response.json();
                     
                     if (data.status === 'error') { alert('查詢失敗: ' + data.message); return; }
@@ -906,10 +930,11 @@
                 }
             } catch (e) { statusText = '連線失敗'; }
             
-            const choice = prompt(`系統狀態:\n${statusText}\n\n1: 重新掃描 Drive\n2: 清空資料庫\n3: 清除快取`);
+            const choice = prompt(`系統狀態:\n${statusText}\n\n1: 重新掃描 Drive\n2: 清空資料庫\n3: 清除快取\n4: 查看查詢紀錄`);
             if (choice === '1') await adminAction('rescan-csv', '掃描完成');
             else if (choice === '2') await adminReset();
             else if (choice === '3') await adminAction('clear-cache', '快取已清除');
+            else if (choice === '4') await showQueryLogs();
         }
 
         async function adminAction(endpoint, successMsg) {
@@ -931,6 +956,40 @@
                 if(res.ok) { alert('✅ 重置成功'); location.reload(); }
                 else alert('❌ 失敗');
             } catch(e) { alert('❌ 錯誤'); }
+        }
+
+        async function showQueryLogs() {
+            const pwd = prompt('管理密碼:');
+            if (pwd !== ADVANCED_PASSWORD) return alert('密碼錯誤');
+
+            try {
+                const summaryRes = await fetch(`${API_BASE}/admin/query-log-summary?password=${encodeURIComponent(pwd)}`);
+                const summaryData = await summaryRes.json();
+                if (summaryData.status !== 'success') throw new Error(summaryData.detail || '統計載入失敗');
+
+                const logsRes = await fetch(`${API_BASE}/admin/query-logs?password=${encodeURIComponent(pwd)}&limit=20`);
+                const logsData = await logsRes.json();
+                if (logsData.status !== 'success') throw new Error(logsData.detail || '明細載入失敗');
+
+                const s = summaryData.summary;
+                const topDistricts = (s.top_districts || []).map(item => `${item.district}: ${item.count}`).join('\n') || '-';
+                const topWeeks = (s.top_weeks || []).map(item => `${item.week_id}: ${item.count}`).join('\n') || '-';
+                const recentLogs = (logsData.logs || []).map(log => {
+                    return `${log.created_at} | ${log.action} | ${log.city || ''}${log.district || ''} | ${log.week_id || ''} | ${log.result_count}筆 | ${log.duration_ms}ms`;
+                }).join('\n') || '-';
+
+                alert(
+                    `查詢紀錄統計\n` +
+                    `總紀錄: ${s.total_logs}\n` +
+                    `匿名使用者: ${s.unique_sessions}\n` +
+                    `今日紀錄: ${s.today_logs}\n\n` +
+                    `熱門區域:\n${topDistricts}\n\n` +
+                    `熱門週次:\n${topWeeks}\n\n` +
+                    `最近 20 筆:\n${recentLogs}`
+                );
+            } catch (e) {
+                alert('查詢紀錄載入失敗: ' + e.message);
+            }
         }
     </script>
 </body>

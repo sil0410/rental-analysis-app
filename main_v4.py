@@ -15,7 +15,7 @@ import hashlib
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -447,6 +447,26 @@ def init_database():
         cursor.execute("ALTER TABLE csv_index ADD COLUMN file_id TEXT")
     except:
         pass  # 欄位已存在
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS query_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT,
+            ip_hash TEXT,
+            action TEXT NOT NULL,
+            city TEXT,
+            district TEXT,
+            week_id TEXT,
+            address TEXT,
+            distance_min INTEGER,
+            distance_max INTEGER,
+            building_type TEXT,
+            room_type TEXT,
+            result_count INTEGER DEFAULT 0,
+            duration_ms INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
     
     conn.commit()
     conn.close()
@@ -459,6 +479,67 @@ def get_week_id(date: datetime = None) -> str:
     year = date.year % 100
     week = date.isocalendar()[1]
     return f"{year:02d}{week:02d}"
+
+def get_request_ip_hash(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    ip = forwarded_for.split(",")[0].strip() if forwarded_for else ""
+    if not ip and request.client:
+        ip = request.client.host or ""
+    if not ip:
+        return ""
+    return hashlib.sha256(ip.encode("utf-8")).hexdigest()[:16]
+
+def get_session_id(request: Request) -> str:
+    session_id = request.headers.get("x-anonymous-session", "").strip()
+    return session_id[:80] if session_id else "anonymous"
+
+def log_query(
+    request: Request,
+    action: str,
+    city: Optional[str] = None,
+    district: Optional[str] = None,
+    week_id: Optional[str] = None,
+    address: Optional[str] = None,
+    distance_min: Optional[int] = None,
+    distance_max: Optional[int] = None,
+    building_type: Optional[str] = None,
+    room_type: Optional[str] = None,
+    result_count: int = 0,
+    duration_ms: int = 0
+) -> None:
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO query_logs (
+                session_id, ip_hash, action, city, district, week_id, address,
+                distance_min, distance_max, building_type, room_type,
+                result_count, duration_ms, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            get_session_id(request),
+            get_request_ip_hash(request),
+            action,
+            city,
+            district,
+            week_id,
+            address,
+            distance_min,
+            distance_max,
+            building_type,
+            room_type,
+            result_count,
+            duration_ms,
+            datetime.now().isoformat()
+        ))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"⚠️ 查詢紀錄寫入失敗: {e}")
+
+def verify_admin_password(password: Optional[str]) -> None:
+    if password != "1124":
+        raise HTTPException(status_code=403, detail="密碼錯誤")
 
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     R = 6371000
@@ -1106,6 +1187,7 @@ async def get_available_filters():
 
 @app.get("/api/prefetch-csv")
 async def prefetch_csv(
+    request: Request,
     city: Optional[str] = None,
     district: Optional[str] = None,
     building_type: Optional[str] = None,
@@ -1114,6 +1196,7 @@ async def prefetch_csv(
     week_id: Optional[str] = None
 ):
     """預先載入選定範圍 CSV 到伺服器快取。"""
+    start_time = time.time()
     try:
         if not district:
             return {"status": "skipped", "message": "district is required"}
@@ -1129,6 +1212,18 @@ async def prefetch_csv(
             building_type=building_type,
             property_category=load_category,
             week_id=week_id
+        )
+        duration_ms = int((time.time() - start_time) * 1000)
+        log_query(
+            request=request,
+            action="prefetch",
+            city=city,
+            district=district,
+            week_id=week_id,
+            building_type=building_type,
+            room_type=room_type,
+            result_count=len(properties),
+            duration_ms=duration_ms
         )
 
         return {
@@ -1148,6 +1243,7 @@ async def prefetch_csv(
 
 @app.get("/api/analysis_v4")
 async def analysis_v4(
+    request: Request,
     address: str,
     city: Optional[str] = None,
     district: Optional[str] = None,
@@ -1161,6 +1257,7 @@ async def analysis_v4(
     lng: Optional[float] = None
 ):
     """分析 API - 按需載入指定條件的數據"""
+    start_time = time.time()
     try:
         # 修正開始：自動處理 week_id 預設值
         if not week_id:
@@ -1279,6 +1376,22 @@ async def analysis_v4(
         
         room_type_analysis = [{"room_type": rt, "count": count} for rt, count in sorted(room_type_counts.items(), key=lambda x: -x[1])]
         
+        duration_ms = int((time.time() - start_time) * 1000)
+        log_query(
+            request=request,
+            action="search",
+            city=city,
+            district=district,
+            week_id=week_id,
+            address=address,
+            distance_min=distance_min,
+            distance_max=distance_max,
+            building_type=building_type,
+            room_type=room_type,
+            result_count=len(filtered_properties),
+            duration_ms=duration_ms
+        )
+
         return {
             "status": "success",
             "query": {
@@ -1317,8 +1430,7 @@ class ResetRequest(BaseModel):
 @app.post("/api/admin/reset-database")
 async def reset_database(request: ResetRequest):
     """重置數據庫並重新掃描 CSV"""
-    if request.password != "1124":
-        raise HTTPException(status_code=403, detail="密碼錯誤")
+    verify_admin_password(request.password)
     
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -1329,6 +1441,93 @@ async def reset_database(request: ResetRequest):
         conn.close()
         scan_available_csv_files()
         return {"status": "success", "message": "數據庫已重置並重新掃描 CSV 文件"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/admin/query-log-summary")
+async def query_log_summary(password: str):
+    """後台查詢紀錄統計。"""
+    verify_admin_password(password)
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT COUNT(*) FROM query_logs")
+        total_logs = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(DISTINCT session_id) FROM query_logs")
+        unique_sessions = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM query_logs WHERE date(created_at) = date('now', 'localtime')")
+        today_logs = cursor.fetchone()[0]
+        cursor.execute("""
+            SELECT district, COUNT(*) AS count FROM query_logs
+            WHERE district IS NOT NULL AND district != ''
+            GROUP BY district ORDER BY count DESC LIMIT 10
+        """)
+        top_districts = [{"district": row[0], "count": row[1]} for row in cursor.fetchall()]
+        cursor.execute("""
+            SELECT week_id, COUNT(*) AS count FROM query_logs
+            WHERE week_id IS NOT NULL AND week_id != ''
+            GROUP BY week_id ORDER BY count DESC LIMIT 10
+        """)
+        top_weeks = [{"week_id": row[0], "count": row[1]} for row in cursor.fetchall()]
+        cursor.execute("""
+            SELECT action, COUNT(*) AS count, ROUND(AVG(duration_ms), 0) AS avg_duration_ms
+            FROM query_logs GROUP BY action ORDER BY count DESC
+        """)
+        actions = [{"action": row[0], "count": row[1], "avg_duration_ms": int(row[2] or 0)} for row in cursor.fetchall()]
+        conn.close()
+
+        return {
+            "status": "success",
+            "summary": {
+                "total_logs": total_logs,
+                "unique_sessions": unique_sessions,
+                "today_logs": today_logs,
+                "top_districts": top_districts,
+                "top_weeks": top_weeks,
+                "actions": actions
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/admin/query-logs")
+async def query_logs(password: str, limit: int = 100):
+    """後台查詢紀錄明細。"""
+    verify_admin_password(password)
+    try:
+        limit = max(1, min(limit, 500))
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT created_at, session_id, ip_hash, action, city, district, week_id,
+                   address, distance_min, distance_max, building_type, room_type,
+                   result_count, duration_ms
+            FROM query_logs
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (limit,))
+        logs = [
+            {
+                "created_at": row[0],
+                "session_id": row[1],
+                "ip_hash": row[2],
+                "action": row[3],
+                "city": row[4],
+                "district": row[5],
+                "week_id": row[6],
+                "address": row[7],
+                "distance_min": row[8],
+                "distance_max": row[9],
+                "building_type": row[10],
+                "room_type": row[11],
+                "result_count": row[12],
+                "duration_ms": row[13]
+            }
+            for row in cursor.fetchall()
+        ]
+        conn.close()
+        return {"status": "success", "logs": logs, "count": len(logs)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
