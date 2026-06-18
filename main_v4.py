@@ -38,6 +38,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount static files to serve HTML pages
+app.mount("/", StaticFiles(directory=".", check_dir=True), name="static")
+
 # 數據庫路徑
 DB_PATH = os.path.join(os.path.dirname(__file__), "rental.db")
 LOGBOOK_TOKEN = os.getenv("LOGBOOK_TOKEN") or os.getenv("QUERY_LOG_TOKEN") or ""
